@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -55,14 +54,6 @@ func (s *Server) handleDocs(w http.ResponseWriter, r *http.Request) {
 	lang := s.i18n.ResolveLanguage(r)
 	otherLang, otherLabel := i18n.GetOtherLang(lang)
 
-	exampleContent, err := os.ReadFile("config.example.yml")
-	var exampleYAML string
-	if err == nil {
-		exampleYAML = string(exampleContent)
-	} else if raw, readErr := s.configMgr.ReadRawConfigFile(); readErr == nil {
-		exampleYAML = raw
-	}
-
 	data := struct {
 		Lang        string
 		Dir         string
@@ -75,7 +66,7 @@ func (s *Server) handleDocs(w http.ResponseWriter, r *http.Request) {
 		Dir:         i18n.GetDir(lang),
 		OtherLang:  otherLang,
 		OtherLabel:  otherLabel,
-		ExampleYAML: exampleYAML,
+		ExampleYAML: config.DefaultConfigYAML,
 		T:           s.i18n.GetTranslations(lang),
 	}
 
@@ -262,16 +253,20 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rawConfig, err := s.configMgr.GetRawConfig()
-	var configJSON string
+	var configJSON template.JS
 	if err == nil {
 		if b, jErr := json.Marshal(rawConfig); jErr == nil {
-			configJSON = string(b)
+			configJSON = template.JS(b)
+		} else {
+			configJSON = template.JS("{}")
 		}
+	} else {
+		configJSON = template.JS("{}")
 	}
 
 	data := struct {
 		YAML       string
-		ConfigJSON string
+		ConfigJSON template.JS
 		Error      string
 		CSRFToken  string
 		Lang       string
@@ -333,7 +328,7 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		data := struct {
 			YAML       string
-			ConfigJSON string
+			ConfigJSON template.JS
 			Error      string
 			CSRFToken  string
 			Lang       string
@@ -343,7 +338,7 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 			T          map[string]string
 		}{
 			YAML:       rawYaml,
-			ConfigJSON: configJSON,
+			ConfigJSON: template.JS(configJSON),
 			Error:      fmt.Sprintf("%s: %v", s.i18n.T(lang, "config_save_error"), saveErr),
 			CSRFToken:  s.auth.GenerateCSRFToken(user),
 			Lang:       lang,
@@ -356,6 +351,7 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[INFO] Configuration successfully saved and reloaded by %q", user)
 	s.store.SetFlash(user, s.i18n.T(lang, "config_saved"))
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

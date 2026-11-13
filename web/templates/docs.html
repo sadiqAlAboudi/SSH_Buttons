@@ -350,14 +350,14 @@ categories:
       </h2>
       <p class="section-desc">
         {{if eq .Lang "ar"}}
-        النموذج الكامل والجاهز لملف <code>config.example.yml</code> للنسخ الفوري والتخصيص:
+        النموذج الكامل والجاهز لملف <code>config.yml</code> للنسخ الفوري والتخصيص:
         {{else}}
-        Full <code>config.example.yml</code> reference ready for quick setup:
+        Full <code>config.yml</code> reference blueprint ready for quick setup:
         {{end}}
       </p>
       <div class="snippet-box">
         <div class="snippet-header">
-          <span>config.example.yml</span>
+          <span>config.yml</span>
           <button type="button" class="btn-copy" onclick="copySnippet(this)">{{$.T.copy_snippet}}</button>
         </div>
         <div class="snippet-body" id="blueprintContent">{{.ExampleYAML}}</div>

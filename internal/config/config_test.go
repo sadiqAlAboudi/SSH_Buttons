@@ -95,16 +95,6 @@ categories:
 func TestConfigAutoInitialization(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yml")
-	examplePath := filepath.Join(tmpDir, "config.example.yml")
-
-	exampleContent := `
-users:
-  - user: "auto_admin"
-    pass: "autopass"
-`
-	if err := os.WriteFile(examplePath, []byte(exampleContent), 0644); err != nil {
-		t.Fatalf("Failed to create example file: %v", err)
-	}
 
 	// config.yml does not exist yet!
 	cm, err := NewConfigManager(configPath)
@@ -114,12 +104,15 @@ users:
 
 	// Verify config.yml was created
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		t.Fatal("Expected config.yml to be automatically created from config.example.yml")
+		t.Fatal("Expected config.yml to be automatically created with default starter configuration")
 	}
 
 	cfg := cm.Get()
-	if _, ok := cfg.UsersByUsername["auto_admin"]; !ok {
-		t.Errorf("Expected auto_admin user loaded from auto-copied config, got %+v", cfg.UsersByUsername)
+	if _, ok := cfg.UsersByUsername["admin"]; !ok {
+		t.Errorf("Expected admin user loaded from auto-generated config, got %+v", cfg.UsersByUsername)
+	}
+	if len(cfg.Hosts) < 2 {
+		t.Errorf("Expected default sample hosts loaded from auto-generated config, got %d hosts", len(cfg.Hosts))
 	}
 }
 

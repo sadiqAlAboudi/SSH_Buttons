@@ -1,18 +1,4 @@
 services:
-  # Auto-initialization helper: Copies config.example.yml to config.yml on first run if missing
-  init-config:
-    image: alpine:3.21
-    restart: "no"
-    volumes:
-      - ./:/workspace
-    command: >
-      sh -c "if [ ! -f /workspace/config.yml ]; then
-               cp /workspace/config.example.yml /workspace/config.yml &&
-               echo '[init-config] Initialized config.yml from config.example.yml';
-             else
-               echo '[init-config] config.yml already exists.';
-             fi"
-
   ssh_buttons:
     build:
       context: .
@@ -20,9 +6,6 @@ services:
     image: ssh_buttons:latest
     container_name: ssh_buttons
     restart: unless-stopped
-    depends_on:
-      init-config:
-        condition: service_completed_successfully
     # Exposed for reverse proxies (Traefik, Nginx, Caddy, Cloudflare Tunnel, Docker networks)
     expose:
       - "${PORT:-8080}"
@@ -39,6 +22,7 @@ services:
       # - ADMIN_PASSWORD=adminpassword
     volumes:
       # Mount configuration file read-write so the WebUI Config Editor can persist changes
+      # If config.yml does not exist, the app automatically initializes it on first run
       - ./config.yml:/app/config.yml:rw
       # Mount SSH keys directory read-only
       - ./keys:/app/keys:ro

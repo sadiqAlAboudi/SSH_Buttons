@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -608,7 +609,7 @@ func TestGUIConfigTabsRendered(t *testing.T) {
 		`id="dlgCategory"`,
 		`id="dlgButton"`,
 		`id="dlgDelete"`,
-		`id="rawConfigJson"`,
+		`id="unsavedNoticeBar"`,
 		`id="configMode"`,
 		`id="configJson"`,
 	}
@@ -734,6 +735,84 @@ func TestGUIConfigSaveStructured_AdminSafeguard(t *testing.T) {
 	body := rrSave.Body.String()
 	if !strings.Contains(body, "admin") {
 		t.Errorf("Expected error banner mentioning 'admin', got body: %s", body)
+	}
+}
+
+func TestConfigDiskPersistenceAndRestart(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+
+	// 1. NewConfigManager when config.yml doesn't exist -> creates from DefaultConfigYAML
+	cm, err := config.NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize ConfigManager: %v", err)
+	}
+
+	server, err := NewServer(cm)
+	if err != nil {
+		t.Fatalf("Failed to initialize server: %v", err)
+	}
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	sessionToken := server.auth.GenerateSessionToken("admin")
+	csrfToken := server.auth.GenerateCSRFToken("admin")
+
+	// 2. Perform GUI save adding a host and button
+	newHostID := "persistent_node"
+	payload := fmt.Sprintf(`{
+		"users": [
+			{"user": "admin", "pass": "adminpassword", "role": "admin"}
+		],
+		"hosts": {
+			"%s": {"name": "Persistent Node", "host": "10.10.10.10", "port": 22, "user": "root"}
+		},
+		"categories": [
+			{
+				"name": "Persistence Test",
+				"buttons": [
+					{"name": "Check Node", "cmd": "uptime", "host": "%s"}
+				]
+			}
+		]
+	}`, newHostID, newHostID)
+
+	form := url.Values{}
+	form.Set("csrf_token", csrfToken)
+	form.Set("config_mode", "gui")
+	form.Set("config_json", payload)
+
+	req := httptest.NewRequest("POST", "/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// 3. Inspect the physical file on disk
+	diskData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("Failed to read config file from disk: %v", err)
+	}
+	diskContent := string(diskData)
+	if !strings.Contains(diskContent, "persistent_node") || !strings.Contains(diskContent, "Check Node") {
+		t.Fatalf("Expected disk file to contain persistent_node and Check Node, got:\n%s", diskContent)
+	}
+
+	// 4. Restart server from the exact same disk file
+	restartedCM, err := config.NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("Failed to restart ConfigManager from saved config: %v", err)
+	}
+	restartedCfg := restartedCM.Get()
+	if _, exists := restartedCfg.Hosts[newHostID]; !exists {
+		t.Fatalf("Expected restarted config to contain host %s, got: %+v", newHostID, restartedCfg.Hosts)
+	}
+	if len(restartedCfg.Categories) != 1 || restartedCfg.Categories[0].Name != "Persistence Test" {
+		t.Fatalf("Expected restarted config to contain category 'Persistence Test', got: %+v", restartedCfg.Categories)
 	}
 }
 

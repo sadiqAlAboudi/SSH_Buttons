@@ -44,6 +44,26 @@
     <input type="hidden" name="config_mode" id="configMode" value="gui">
     <input type="hidden" name="config_json" id="configJson" value="">
 
+    <!-- Sticky Unsaved Changes Notice Banner -->
+    <div id="unsavedNoticeBar" class="unsaved-banner" style="display: none;">
+      <div style="display: flex; align-items: center; gap: 0.6rem;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <span><strong>{{.T.unsaved_changes_title}}</strong> — {{.T.unsaved_changes_desc}}</span>
+      </div>
+      <button type="button" onclick="submitConfigForm()" class="btn-header btn-save" style="margin: 0; padding: 0.4rem 0.85rem;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+          <polyline points="7 3 7 8 15 8"></polyline>
+        </svg>
+        <span>{{.T.save_changes}}</span>
+      </button>
+    </div>
+
     <!-- Navigation Tabs -->
     <nav class="config-tabs" aria-label="Configuration Sections">
       <button type="button" class="config-tab-btn active" id="tabBtnCategories" onclick="switchTab('categories')">
@@ -360,34 +380,38 @@
     <button type="button" id="btnConfirmDelete" class="btn-action-icon danger" style="padding: 0.6rem 1.2rem; font-weight: 600;">{{.T.delete}}</button>
   </div>
 </dialog>
-
-<!-- Safely embedded raw configuration state as JSON -->
-<script type="application/json" id="rawConfigJson">
-{{.ConfigJSON}}
-</script>
 {{end}}
 
 {{define "scripts"}}
 <script>
-  let state = {
-    users: [],
-    hosts: {},
-    categories: []
-  };
-
-  const rawJsonEl = document.getElementById('rawConfigJson');
-  if (rawJsonEl && rawJsonEl.textContent.trim()) {
+  let state = {{.ConfigJSON}};
+  if (typeof state === 'string') {
     try {
-      const parsed = JSON.parse(rawJsonEl.textContent.trim());
-      if (parsed) {
-        state.users = parsed.users || [];
-        state.hosts = parsed.hosts || {};
-        state.categories = parsed.categories || [];
-      }
+      state = JSON.parse(state);
     } catch(e) {
-      console.warn('Failed to parse initial config JSON:', e);
+      console.warn('Failed to parse config string:', e);
     }
   }
+  if (!state || typeof state !== 'object') {
+    state = { users: [], hosts: {}, categories: [] };
+  }
+  if (!state.users) state.users = [];
+  if (!state.hosts) state.hosts = {};
+  if (!state.categories) state.categories = [];
+
+  let isDirty = false;
+  function markDirty() {
+    isDirty = true;
+    const bar = document.getElementById('unsavedNoticeBar');
+    if (bar) bar.style.display = 'flex';
+  }
+
+  window.addEventListener('beforeunload', function(e) {
+    if (isDirty) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 
   // Handle Tab Switching
   function switchTab(tab) {
@@ -778,6 +802,7 @@
 
     document.getElementById('dlgUser').close();
     renderUsers();
+    markDirty();
   }
 
   // Host Modal Functions
@@ -866,6 +891,7 @@
     renderHosts();
     updateHostSelects();
     renderCategories();
+    markDirty();
   }
 
   // Category Modal Functions
@@ -914,6 +940,7 @@
 
     document.getElementById('dlgCategory').close();
     renderCategories();
+    markDirty();
   }
 
   // Button Modal Functions
@@ -994,6 +1021,7 @@
 
     document.getElementById('dlgButton').close();
     renderCategories();
+    markDirty();
   }
 
   // Deletion logic
@@ -1033,6 +1061,7 @@
     }
     pendingDelete = null;
     document.getElementById('dlgDelete').close();
+    markDirty();
   };
 
   // Convert state to clean YAML
@@ -1104,6 +1133,7 @@
   }
 
   function submitConfigForm() {
+    isDirty = false;
     const mode = document.getElementById('configMode').value;
     if (mode === 'gui') {
       document.getElementById('configJson').value = JSON.stringify(state);
@@ -1115,6 +1145,7 @@
   // Textarea Tab key support
   const textarea = document.getElementById('configYaml');
   if (textarea) {
+    textarea.addEventListener('input', markDirty);
     textarea.addEventListener('keydown', function(e) {
       if (e.key === 'Tab') {
         e.preventDefault();
@@ -1122,6 +1153,7 @@
         const end = this.selectionEnd;
         this.value = this.value.substring(0, start) + '  ' + this.value.substring(end);
         this.selectionStart = this.selectionEnd = start + 2;
+        markDirty();
       }
     });
   }
