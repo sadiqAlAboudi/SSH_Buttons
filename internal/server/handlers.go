@@ -1,9 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -15,6 +18,17 @@ import (
 	"ssh_buttons/internal/ssh"
 	"ssh_buttons/web"
 )
+
+func render(w http.ResponseWriter, tmpl *template.Template, data any) {
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "base.html", data); err != nil {
+		log.Printf("[ERROR] Template execution failed: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = buf.WriteTo(w)
+}
 
 func (s *Server) handleSetLang(w http.ResponseWriter, r *http.Request) {
 	lang := r.URL.Query().Get("lang")
@@ -64,7 +78,7 @@ func (s *Server) handleDocs(w http.ResponseWriter, r *http.Request) {
 		T:           s.i18n.GetTranslations(lang),
 	}
 
-	_ = s.docsTmpl.ExecuteTemplate(w, "base.html", data)
+	render(w, s.docsTmpl, data)
 }
 
 func (s *Server) getSessionUser(r *http.Request) string {
@@ -100,7 +114,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		OtherLabel: otherLabel,
 		T:          s.i18n.GetTranslations(lang),
 	}
-	_ = s.loginTmpl.ExecuteTemplate(w, "base.html", data)
+	render(w, s.loginTmpl, data)
 }
 
 func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -132,7 +146,7 @@ func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 			OtherLabel: otherLabel,
 			T:          s.i18n.GetTranslations(lang),
 		}
-		_ = s.loginTmpl.ExecuteTemplate(w, "base.html", data)
+		render(w, s.loginTmpl, data)
 		return
 	}
 
@@ -158,7 +172,7 @@ func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 			OtherLabel: otherLabel,
 			T:          s.i18n.GetTranslations(lang),
 		}
-		_ = s.loginTmpl.ExecuteTemplate(w, "base.html", data)
+		render(w, s.loginTmpl, data)
 		return
 	}
 
@@ -233,7 +247,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		T:          s.i18n.GetTranslations(lang),
 	}
 
-	_ = s.dashboardTmpl.ExecuteTemplate(w, "base.html", data)
+	render(w, s.dashboardTmpl, data)
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
@@ -247,7 +261,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Content    string
+		YAML       string
 		Error      string
 		CSRFToken  string
 		Lang       string
@@ -256,7 +270,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		OtherLabel string
 		T          map[string]string
 	}{
-		Content:    content,
+		YAML:       content,
 		Error:      "",
 		CSRFToken:  s.auth.GenerateCSRFToken(user),
 		Lang:       lang,
@@ -266,7 +280,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		T:          s.i18n.GetTranslations(lang),
 	}
 
-	_ = s.configTmpl.ExecuteTemplate(w, "base.html", data)
+	render(w, s.configTmpl, data)
 }
 
 func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
@@ -283,14 +297,17 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rawYaml := r.FormValue("config_yaml")
+	rawYaml := r.FormValue("yaml")
+	if rawYaml == "" {
+		rawYaml = r.FormValue("config_yaml")
+	}
 	lang := s.i18n.ResolveLanguage(r)
 
 	if err := s.configMgr.SaveConfigFile([]byte(rawYaml)); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		otherLang, otherLabel := i18n.GetOtherLang(lang)
 		data := struct {
-			Content    string
+			YAML       string
 			Error      string
 			CSRFToken  string
 			Lang       string
@@ -299,7 +316,7 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 			OtherLabel string
 			T          map[string]string
 		}{
-			Content:    rawYaml,
+			YAML:       rawYaml,
 			Error:      fmt.Sprintf("%s: %v", s.i18n.T(lang, "yaml_syntax_error"), err),
 			CSRFToken:  s.auth.GenerateCSRFToken(user),
 			Lang:       lang,
@@ -308,7 +325,7 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 			OtherLabel: otherLabel,
 			T:          s.i18n.GetTranslations(lang),
 		}
-		_ = s.configTmpl.ExecuteTemplate(w, "base.html", data)
+		render(w, s.configTmpl, data)
 		return
 	}
 

@@ -1,26 +1,9 @@
 # ==============================================================================
-# SSH_BUTTONS CONFIGURATION MANUAL & EXAMPLE (`config.yml`)
-# ==============================================================================
-#
-# NOTE: Server parameters (Port, Session Secret, and Global SSH Timeout) are
-# configured via environment variables in `docker-compose.yml`, NOT in this file:
-#   - PORT=8080
-#   - SESSION_SECRET=change-this-to-a-secure-random-key-in-production
-#   - TIMEOUT=15
-#
-# This file defines your users, target hosts, categories, and actionable buttons.
+# SSH Buttons - Example Configuration
+# Full documentation & configuration reference: visit /docs in the Web UI
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# 1. USER ACCOUNTS & ROLE-BASED ACCESS CONTROL (RBAC)
-# ------------------------------------------------------------------------------
-# Roles:
-#   - admin:    Can trigger actions, reload configs, and edit config.yml in the WebUI.
-#   - operator: Can view dashboard and trigger action buttons only.
-#
-# Passwords support:
-#   - Plaintext (e.g. "mySecretPass")
-#   - Bcrypt hashes (e.g. "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
+# 1. User Accounts & Roles (roles: "admin" | "operator")
 users:
   - user: "admin"
     pass: "adminpassword"
@@ -30,99 +13,56 @@ users:
     pass: "operatorpassword"
     role: "operator"
 
-# ------------------------------------------------------------------------------
-# 2. REMOTE HOST DEFINITIONS
-# ------------------------------------------------------------------------------
-# Define reusable machines and network devices.
-#
-# Available fields per host:
-#   - name:           (Optional) Friendly display name. Defaults to the map key.
-#   - host:           (Required) IP address or hostname of the remote machine.
-#   - port:           (Optional) SSH port. Defaults to 22.
-#   - user:           (Required) Remote SSH login username.
-#   - key:            (Optional) Path to private key file. Relative paths resolve
-#                     relative to this config file (e.g. "./keys/id_ed25519").
-#   - pass:           (Optional) SSH login password (used if key is absent or as fallback).
-#   - insecure:       (Optional) Set false to enforce known_hosts verification.
-#                     Defaults to true for internal subnets and homelabs.
-#   - pty:            (Optional) Set true to force interactive pseudo-terminal shell mode.
-#                     REQUIRED for Cisco IOS, switches, and appliances that reject non-interactive 'exec'.
-#   - legacy_ciphers: (Optional) Set true to enable older Diffie-Hellman (group1, group14),
-#                     AES-CBC, 3DES, and ssh-rsa algorithms for older switches and RouterOS v6.
+# 2. Target Remote Hosts
 hosts:
-  # Example A: Ubuntu / Debian Linux Server with SSH Private Key
   srv_linux:
     name: "Ubuntu Production 01"
     host: "192.168.1.10"
     user: "root"
     key: "./keys/id_ed25519"
 
-  # Example B: MikroTik RouterOS Gateway (v6 or v7)
   router_mikrotik:
     name: "Core Gateway (MikroTik)"
     host: "192.168.1.1"
     user: "admin"
     pass: "RouterPassword"
-    legacy_ciphers: true # Enable if running older RouterOS v6
+    legacy_ciphers: true # Enable for RouterOS v6 / older ciphers
 
-  # Example C: Cisco Catalyst Switch / IOS-XE Device
   switch_cisco:
     name: "Access Switch (Cisco 2960/3750)"
     host: "192.168.1.2"
     user: "cisco"
     pass: "CiscoEnablePassword"
-    pty: true            # Cisco IOS rejects 'exec' channels; requires PTY shell
-    legacy_ciphers: true # Older Cisco switches require SHA-1 DH and ssh-rsa
+    pty: true            # Required: Cisco IOS requires interactive PTY shell
+    legacy_ciphers: true # Enable for older DH groups and ssh-rsa
 
-# ------------------------------------------------------------------------------
-# 3. CATEGORIES & BUTTONS
-# ------------------------------------------------------------------------------
-# Group buttons visually by service, rack, or environment.
-#
-# CATEGORY-LEVEL INHERITANCE:
-#   Setting `host: srv_linux` on a category automatically cascades that host
-#   to every button inside it, eliminating the need to repeat `host:` on each item.
-#
-# BUTTON FIELDS:
-#   - name:     (Required) Label displayed on the button.
-#   - cmd:      (Required) Shell command executed over SSH on the target host.
-#   - host:     (Optional) Overrides category host for this specific button.
-#   - stdin:    (Optional) Automated confirmation input sent into standard input
-#               (e.g. "y\n" for MikroTik /system reboot, or "\n" for Cisco reload [confirm]).
-#   - pty:      (Optional) Force or disable PTY shell mode for this specific button.
-#   - timeout:  (Optional) Execution timeout in seconds. Defaults to server timeout (15s).
-#   - id:       (Optional) Unique button identifier. If omitted, a clean slug
-#               is auto-generated from category and button names (e.g. "linux-ops-reboot").
-#
-# SHORTHAND MODIFIERS & STYLES:
-#   - danger:  true   -> Applies red styling and enforces a confirmation dialog before running.
-#   - warning: true   -> Applies amber styling and enforces a confirmation dialog before running.
-#   - confirm: true   -> Enforces a confirmation dialog with default primary styling.
-#   - style:   "..."  -> Explicit button color: primary (default), secondary, success, warning, danger.
+# 3. Categories & Action Buttons
 categories:
   - name: "Linux Operations"
-    host: "srv_linux" # All buttons below run on srv_linux by default
+    description: "Standard maintenance and diagnostics for production Linux"
+    host: "srv_linux"
     buttons:
       - name: "Restart Docker"
         cmd: "systemctl restart docker"
-        warning: true # Auto-configures amber style + confirmation modal
+        warning: true
         timeout: 30
 
       - name: "Check Disk Space"
-        cmd: "df -h" # Inherits srv_linux, runs with no confirmation prompt
+        cmd: "df -h"
 
       - name: "Check Memory Usage"
         cmd: "free -m"
 
       - name: "Reboot Server"
         cmd: "sudo reboot"
-        danger: true # Auto-configures crimson style + confirmation modal
+        danger: true
 
       - name: "Power Off Server"
         cmd: "sudo shutdown -h now"
         danger: true
 
   - name: "Network Gear"
+    description: "Diagnostics and actions for core router and access switch"
     buttons:
       - name: "Check MikroTik IPs"
         host: "router_mikrotik"
@@ -137,7 +77,7 @@ categories:
       - name: "Reboot MikroTik"
         host: "router_mikrotik"
         cmd: "/system reboot"
-        stdin: "y\n" # Automatically answers 'Reboot, yes? [y/N]:'
+        stdin: "y\n"
         danger: true
 
       - name: "Show Cisco Interfaces"
@@ -155,5 +95,5 @@ categories:
       - name: "Reload Cisco Switch"
         host: "switch_cisco"
         cmd: "reload"
-        stdin: "\n" # Automatically answers 'Proceed with reload? [confirm]'
+        stdin: "\n"
         danger: true

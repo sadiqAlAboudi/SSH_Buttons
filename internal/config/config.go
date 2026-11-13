@@ -55,8 +55,9 @@ type ButtonConfig struct {
 }
 
 type NormalizedCategory struct {
-	Name    string
-	Buttons []ButtonConfig
+	Name        string
+	Description string
+	Buttons     []ButtonConfig
 }
 
 type AppConfig struct {
@@ -203,10 +204,11 @@ type rawButton struct {
 }
 
 type rawCategory struct {
-	Name    string      `yaml:"name"`
-	Host    string      `yaml:"host"`
-	PTY     *bool       `yaml:"pty"`
-	Buttons []rawButton `yaml:"buttons"`
+	Name        string      `yaml:"name"`
+	Description string      `yaml:"description"`
+	Host        string      `yaml:"host"`
+	PTY         *bool       `yaml:"pty"`
+	Buttons     []rawButton `yaml:"buttons"`
 }
 
 type rawRoot struct {
@@ -470,11 +472,16 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 		categoryMap[catName] = append(categoryMap[catName], btn)
 	}
 
+	categoryDescMap := make(map[string]string)
+
 	// Process categories
 	for _, cat := range raw.Categories {
 		catName := cat.Name
 		if catName == "" {
 			catName = "General"
+		}
+		if cat.Description != "" {
+			categoryDescMap[catName] = cat.Description
 		}
 		for _, btn := range cat.Buttons {
 			recordButton(catName, cat.Host, cat.PTY, btn)
@@ -489,8 +496,9 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 	var categories []NormalizedCategory
 	for _, catName := range categoryOrder {
 		categories = append(categories, NormalizedCategory{
-			Name:    catName,
-			Buttons: categoryMap[catName],
+			Name:        catName,
+			Description: categoryDescMap[catName],
+			Buttons:     categoryMap[catName],
 		})
 	}
 

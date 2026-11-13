@@ -14,6 +14,7 @@ import (
 	"ssh_buttons/internal/auth"
 	"ssh_buttons/internal/config"
 	"ssh_buttons/internal/i18n"
+	"ssh_buttons/internal/ssh"
 )
 
 func setupTestServer(t *testing.T) (*Server, *config.ConfigManager, string) {
@@ -404,5 +405,174 @@ func TestResponsiveHamburgerMenu(t *testing.T) {
 	}
 	if !strings.Contains(rrCSS.Body.String(), "@media (max-width: 768px)") {
 		t.Errorf("Expected app.css to define @media (max-width: 768px)")
+	}
+}
+
+func TestDashboardButtonsRendered(t *testing.T) {
+	server, _, _ := setupTestServer(t)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	sessionToken := server.auth.GenerateSessionToken("admin")
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+
+	// Verify categories, button labels, and commands render into the HTML
+	expectedStrings := []string{
+		"Ops",
+		"Ping",
+		"echo pong",
+		"test_host",
+		"btn-act",
+	}
+
+	for _, str := range expectedStrings {
+		if !strings.Contains(body, str) {
+			t.Errorf("Dashboard response missing expected rendered element %q", str)
+		}
+	}
+}
+
+func TestConfigEditorContentAndSave(t *testing.T) {
+	server, _, _ := setupTestServer(t)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	sessionToken := server.auth.GenerateSessionToken("admin")
+
+	// 1. GET /config should populate the textarea with config YAML
+	req := httptest.NewRequest("GET", "/config", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /config, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, `<textarea id="configYaml" name="yaml"`) {
+		t.Errorf("Expected config editor textarea with name='yaml'")
+	}
+	if !strings.Contains(body, "test_host:") || !strings.Contains(body, "echo pong") {
+		t.Errorf("Expected config editor textarea to be populated with current config YAML, got body: %s", body)
+	}
+
+	// 2. POST /config with new YAML should successfully update and redirect
+	csrfToken := server.auth.GenerateCSRFToken("admin")
+	newYAML := `users:
+  - user: "admin"
+    pass: "adminpass"
+    role: "admin"
+hosts:
+  prod_host:
+    name: "Production Host"
+    host: "10.0.0.99"
+    user: "admin"
+    pass: "pass"
+categories:
+  - name: "Production Actions"
+    description: "High impact operations"
+    host: "prod_host"
+    buttons:
+      - name: "Restart Nginx"
+        cmd: "systemctl restart nginx"
+        warning: true
+`
+	form := url.Values{}
+	form.Set("csrf_token", csrfToken)
+	form.Set("yaml", newYAML)
+
+	reqSave := httptest.NewRequest("POST", "/config", strings.NewReader(form.Encode()))
+	reqSave.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqSave.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	rrSave := httptest.NewRecorder()
+	mux.ServeHTTP(rrSave, reqSave)
+
+	if rrSave.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 See Other after save, got %d. Body: %s", rrSave.Code, rrSave.Body.String())
+	}
+
+	// 3. Verify dashboard now renders new category, description, and button
+	reqDash := httptest.NewRequest("GET", "/", nil)
+	reqDash.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	rrDash := httptest.NewRecorder()
+	mux.ServeHTTP(rrDash, reqDash)
+
+	if rrDash.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /, got %d", rrDash.Code)
+	}
+
+	dashBody := rrDash.Body.String()
+	newStrings := []string{
+		"Production Actions",
+		"High impact operations",
+		"Restart Nginx",
+		"systemctl restart nginx",
+		"prod_host",
+	}
+
+	for _, str := range newStrings {
+		if !strings.Contains(dashBody, str) {
+			t.Errorf("Dashboard missing newly saved element %q", str)
+		}
+	}
+}
+
+func TestDashboardLastResultRendering(t *testing.T) {
+	server, _, _ := setupTestServer(t)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	sessionToken := server.auth.GenerateSessionToken("admin")
+
+	// Put a failed result with ErrorDetails and DiagnosticHint in FlashStore
+	failedResult := &ssh.ExecutionResult{
+		ButtonID:       "ping_btn",
+		ButtonLabel:    "Ping Host",
+		HostName:       "Test Host",
+		HostAddress:    "127.0.0.1:22",
+		Command:        "ping -c 1 8.8.8.8",
+		Success:        false,
+		ExitCode:       2,
+		Duration:       250 * time.Millisecond,
+		Stderr:         "Network unreachable",
+		ErrorDetails:   "Execution failed: channel open: rejected",
+		DiagnosticHint: "This device may not support non-interactive 'exec' commands. Enable 'pty: true' in config.yml for this host or button.",
+		ExecutedAt:     time.Now(),
+	}
+	server.store.SetResult("admin", failedResult)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK when rendering dashboard with failed result, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	requiredSnippets := []string{
+		"Execution failed: channel open: rejected",
+		"Diagnostic Hint:",
+		"pty: true",
+		"Network unreachable",
+		"pill-failed",
+	}
+
+	for _, snippet := range requiredSnippets {
+		if !strings.Contains(body, snippet) {
+			t.Errorf("Expected dashboard to contain %q, but got body:\n%s", snippet, body)
+		}
 	}
 }

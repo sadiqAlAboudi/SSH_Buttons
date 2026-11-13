@@ -79,10 +79,10 @@
     </div>
 
     <div class="result-body">
-      {{if .LastResult.Error}}
+      {{if .LastResult.ErrorDetails}}
       <div class="error-diagnostic">
         <div style="font-weight: 600; margin-bottom: 0.3rem;">{{.T.error_details}}</div>
-        <div style="direction: ltr; font-family: monospace;">{{.LastResult.Error}}</div>
+        <div style="direction: ltr; font-family: monospace;">{{.LastResult.ErrorDetails}}</div>
         {{if .LastResult.DiagnosticHint}}
         <div class="diagnostic-hint">
           <strong>💡 Diagnostic Hint:</strong> {{.LastResult.DiagnosticHint}}

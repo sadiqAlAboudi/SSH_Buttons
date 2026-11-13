@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,18 +19,27 @@ import (
 )
 
 type ExecutionResult struct {
-	ButtonID     string        `json:"button_id"`
-	ButtonLabel  string        `json:"button_label"`
-	HostName     string        `json:"host_name"`
-	HostAddress  string        `json:"host_address"`
-	Command      string        `json:"command"`
-	Success      bool          `json:"success"`
-	ExitCode     int           `json:"exit_code"`
-	Duration     time.Duration `json:"duration"`
-	Stdout       string        `json:"stdout"`
-	Stderr       string        `json:"stderr"`
-	ErrorDetails string        `json:"error_details"`
-	ExecutedAt   time.Time     `json:"executed_at"`
+	ButtonID       string        `json:"button_id"`
+	ButtonLabel    string        `json:"button_label"`
+	HostName       string        `json:"host_name"`
+	HostAddress    string        `json:"host_address"`
+	Command        string        `json:"command"`
+	Success        bool          `json:"success"`
+	ExitCode       int           `json:"exit_code"`
+	Duration       time.Duration `json:"duration"`
+	Stdout         string        `json:"stdout"`
+	Stderr         string        `json:"stderr"`
+	ErrorDetails   string        `json:"error_details"`
+	DiagnosticHint string        `json:"diagnostic_hint,omitempty"`
+	ExecutedAt     time.Time     `json:"executed_at"`
+}
+
+// Error returns ErrorDetails to satisfy error interface or convenient template field evaluation
+func (r *ExecutionResult) Error() string {
+	if r == nil {
+		return ""
+	}
+	return r.ErrorDetails
 }
 
 type SSHRunner struct {
@@ -60,7 +70,7 @@ func (r *SSHRunner) Execute(ctx context.Context, btn config.ButtonConfig) *Execu
 	}
 
 	res.HostName = host.Name
-	res.HostAddress = fmt.Sprintf("%s:%d", host.Host, host.Port)
+	res.HostAddress = net.JoinHostPort(host.Host, strconv.Itoa(host.Port))
 
 	// Build SSH client configuration
 	clientConfig, err := buildSSHClientConfig(host, time.Duration(btn.Timeout)*time.Second)
@@ -72,7 +82,7 @@ func (r *SSHRunner) Execute(ctx context.Context, btn config.ButtonConfig) *Execu
 	}
 
 	// Connect with timeout
-	addr := fmt.Sprintf("%s:%d", host.Host, host.Port)
+	addr := net.JoinHostPort(host.Host, strconv.Itoa(host.Port))
 	conn, err := net.DialTimeout("tcp", addr, time.Duration(btn.Timeout)*time.Second)
 	if err != nil {
 		res.Success = false
@@ -87,9 +97,14 @@ func (r *SSHRunner) Execute(ctx context.Context, btn config.ButtonConfig) *Execu
 		res.Success = false
 		hint := ""
 		if strings.Contains(strings.ToLower(err.Error()), "no common algorithm") {
-			hint = " (Hint: Remote device requires legacy algorithms. Try adding 'legacy_ciphers: true' to this host in config.yml)."
+			hint = "Remote device requires legacy algorithms. Try adding 'legacy_ciphers: true' to this host in config.yml."
 		}
-		res.ErrorDetails = fmt.Sprintf("SSH handshake failed: %v%s", err, hint)
+		res.DiagnosticHint = hint
+		if hint != "" {
+			res.ErrorDetails = fmt.Sprintf("SSH handshake failed: %v (Hint: %s)", err, hint)
+		} else {
+			res.ErrorDetails = fmt.Sprintf("SSH handshake failed: %v", err)
+		}
 		res.Duration = time.Since(start)
 		return res
 	}
@@ -178,9 +193,14 @@ func (r *SSHRunner) Execute(ctx context.Context, btn config.ButtonConfig) *Execu
 		if strings.Contains(errLower, "channel request failed") ||
 			(strings.Contains(errLower, "command") && strings.Contains(errLower, "failed")) ||
 			strings.Contains(errLower, "channel open: rejected") {
-			hint = "\n(Hint: This device may not support non-interactive 'exec' commands. Enable 'pty: true' in config.yml for this host or button)."
+			hint = "This device may not support non-interactive 'exec' commands. Enable 'pty: true' in config.yml for this host or button."
 		}
-		res.ErrorDetails = fmt.Sprintf("Execution failed: %v%s", runErr, hint)
+		res.DiagnosticHint = hint
+		if hint != "" {
+			res.ErrorDetails = fmt.Sprintf("Execution failed: %v (Hint: %s)", runErr, hint)
+		} else {
+			res.ErrorDetails = fmt.Sprintf("Execution failed: %v", runErr)
+		}
 		return res
 	}
 }
@@ -191,7 +211,7 @@ func (r *SSHRunner) executePTY(ctx context.Context, client *ssh.Client, btn conf
 		ButtonID:    btn.ID,
 		ButtonLabel: btn.Label,
 		HostName:    host.Name,
-		HostAddress: fmt.Sprintf("%s:%d", host.Host, host.Port),
+		HostAddress: net.JoinHostPort(host.Host, strconv.Itoa(host.Port)),
 		Command:     btn.Command,
 		ExecutedAt:  start,
 	}
