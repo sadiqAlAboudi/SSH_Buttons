@@ -27,23 +27,32 @@ func NewAuthService(cm *ConfigManager) *AuthService {
 	return &AuthService{configMgr: cm}
 }
 
-// CheckCredentials validates username and password.
+// CheckCredentials validates username and password against configured users.
 // Password can be plain text or bcrypt hash (starts with $2a$, $2b$, or $2y$).
 func (a *AuthService) CheckCredentials(username, password string) bool {
 	cfg := a.configMgr.Get()
 
-	// Constant-time username comparison
-	if subtle.ConstantTimeCompare([]byte(username), []byte(cfg.Server.AdminUsername)) != 1 {
+	user, exists := cfg.UsersByUsername[username]
+	if !exists {
 		return false
 	}
 
-	storedPass := cfg.Server.AdminPassword
+	storedPass := user.Password
 	if strings.HasPrefix(storedPass, "$2a$") || strings.HasPrefix(storedPass, "$2b$") || strings.HasPrefix(storedPass, "$2y$") {
 		err := bcrypt.CompareHashAndPassword([]byte(storedPass), []byte(password))
 		return err == nil
 	}
 
 	return subtle.ConstantTimeCompare([]byte(password), []byte(storedPass)) == 1
+}
+
+// GetUserRole returns the role ("admin" or "operator") of the given user
+func (a *AuthService) GetUserRole(username string) string {
+	cfg := a.configMgr.Get()
+	if user, exists := cfg.UsersByUsername[username]; exists {
+		return user.Role
+	}
+	return ""
 }
 
 // GenerateSessionToken creates a signed token in format: base64(username:expiresAtUnix:signature)
@@ -86,13 +95,13 @@ func (a *AuthService) ValidateSessionToken(token string) (string, bool) {
 	}
 
 	cfg := a.configMgr.Get()
-	// Check if current username matches admin username
-	if subtle.ConstantTimeCompare([]byte(username), []byte(cfg.Server.AdminUsername)) != 1 {
+	// Check if user still exists in current configuration
+	if _, exists := cfg.UsersByUsername[username]; !exists {
 		return "", false
 	}
 
 	expectedMac := hmac.New(sha256.New, []byte(cfg.Server.SessionSecret))
-	expectedMac.Write(fmt.Appendf(nil, "%s:%s", username, expiresAtStr))
+	expectedMac.Write([]byte(fmt.Sprintf("%s:%s", username, expiresAtStr)))
 	expectedSig := expectedMac.Sum(nil)
 
 	actualSig, err := base64.RawURLEncoding.DecodeString(sigBase64)
@@ -146,4 +155,18 @@ func (a *AuthService) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 		next(w, r)
 	}
+}
+
+func (a *AuthService) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return a.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		cookie, _ := r.Cookie(sessionCookieName)
+		username, _ := a.ValidateSessionToken(cookie.Value)
+
+		if a.GetUserRole(username) != "admin" {
+			http.Error(w, "Forbidden: Administrator role required", http.StatusForbidden)
+			return
+		}
+
+		next(w, r)
+	})
 }

@@ -10,12 +10,12 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
-      # Optional environment overrides (take precedence over config.yml)
-      - ADMIN_USERNAME=admin
-      - ADMIN_PASSWORD=adminpassword
       - SESSION_SECRET=change-this-to-a-secure-random-key-in-production
+      # Optional: set ADMIN_USER & ADMIN_PASSWORD to inject/override an admin account at runtime
+      # - ADMIN_USER=admin
+      # - ADMIN_PASSWORD=adminpassword
     volumes:
-      # Mount configuration file read-only
-      - ./config.yml:/app/config.yml:ro
+      # Mount configuration file read-write so the WebUI Config Editor can persist changes
+      - ./config.yml:/app/config.yml:rw
       # Mount SSH keys directory read-only
       - ./keys:/app/keys:ro

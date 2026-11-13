@@ -75,7 +75,7 @@ func main() {
 		serverStopCtx()
 	}()
 
-	log.Printf("[INFO] SSH Buttons dashboard running at http://0.0.0.0:%d (Admin: %s)", cfg.Server.Port, cfg.Server.AdminUsername)
+	log.Printf("[INFO] SSH Buttons dashboard running at http://0.0.0.0:%d (%d users, %d hosts)", cfg.Server.Port, len(cfg.Users), len(cfg.Hosts))
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("[FATAL] HTTP server failed to listen: %v", err)
 	}

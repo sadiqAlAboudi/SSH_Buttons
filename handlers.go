@@ -67,6 +67,7 @@ type Server struct {
 	i18n          *I18nManager
 	loginTmpl     *template.Template
 	dashboardTmpl *template.Template
+	configTmpl    *template.Template
 }
 
 func NewServer(cm *ConfigManager) (*Server, error) {
@@ -78,6 +79,11 @@ func NewServer(cm *ConfigManager) (*Server, error) {
 	dashboardTmpl, err := template.ParseFS(templateFS, "templates/dashboard.html")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse dashboard template: %w", err)
+	}
+
+	configTmpl, err := template.ParseFS(templateFS, "templates/config.html")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse config template: %w", err)
 	}
 
 	auth := NewAuthService(cm)
@@ -93,6 +99,7 @@ func NewServer(cm *ConfigManager) (*Server, error) {
 		i18n:          i18n,
 		loginTmpl:     loginTmpl,
 		dashboardTmpl: dashboardTmpl,
+		configTmpl:    configTmpl,
 	}, nil
 }
 
@@ -116,7 +123,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Protected routes
 	mux.HandleFunc("GET /", s.auth.RequireAuth(s.handleDashboard))
 	mux.HandleFunc("POST /run", s.auth.RequireAuth(s.handleRun))
-	mux.HandleFunc("POST /reload", s.auth.RequireAuth(s.handleReload))
+	mux.HandleFunc("POST /reload", s.auth.RequireAdmin(s.handleReload))
+	mux.HandleFunc("GET /config", s.auth.RequireAdmin(s.handleConfig))
+	mux.HandleFunc("POST /config", s.auth.RequireAdmin(s.handleConfigSave))
 }
 
 func (s *Server) handleSetLang(w http.ResponseWriter, r *http.Request) {
@@ -223,6 +232,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := s.getSessionUser(r)
+	role := s.auth.GetUserRole(user)
 	cfg := s.configMgr.Get()
 
 	lastRes := s.store.PopResult(user)
@@ -236,6 +246,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		LastResult *ExecutionResult
 		Flash      string
 		User       string
+		Role       string
+		IsAdmin    bool
 		HostCount  int
 		Lang       string
 		Dir        string
@@ -247,6 +259,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		LastResult: lastRes,
 		Flash:      flash,
 		User:       user,
+		Role:       role,
+		IsAdmin:    role == "admin",
 		HostCount:  len(cfg.Hosts),
 		Lang:       lang,
 		Dir:        GetDir(lang),
@@ -256,6 +270,74 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = s.dashboardTmpl.Execute(w, data)
+}
+
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	lang := s.i18n.ResolveLanguage(r)
+	otherLang, otherLabel := GetOtherLang(lang)
+
+	content, err := s.configMgr.ReadRawConfigFile()
+	if err != nil {
+		content = "# Error reading config file: " + err.Error()
+	}
+
+	data := struct {
+		Content    string
+		Error      string
+		Lang       string
+		Dir        string
+		OtherLang  string
+		OtherLabel string
+		T          map[string]string
+	}{
+		Content:    content,
+		Error:      "",
+		Lang:       lang,
+		Dir:        GetDir(lang),
+		OtherLang:  otherLang,
+		OtherLabel: otherLabel,
+		T:          s.i18n.GetTranslations(lang),
+	}
+
+	_ = s.configTmpl.Execute(w, data)
+}
+
+func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	rawYaml := r.FormValue("config_yaml")
+	user := s.getSessionUser(r)
+	lang := s.i18n.ResolveLanguage(r)
+
+	if err := s.configMgr.SaveConfigFile([]byte(rawYaml)); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		otherLang, otherLabel := GetOtherLang(lang)
+		data := struct {
+			Content    string
+			Error      string
+			Lang       string
+			Dir        string
+			OtherLang  string
+			OtherLabel string
+			T          map[string]string
+		}{
+			Content:    rawYaml,
+			Error:      fmt.Sprintf("%s: %v", s.i18n.T(lang, "yaml_syntax_error"), err),
+			Lang:       lang,
+			Dir:        GetDir(lang),
+			OtherLang:  otherLang,
+			OtherLabel: otherLabel,
+			T:          s.i18n.GetTranslations(lang),
+		}
+		_ = s.configTmpl.Execute(w, data)
+		return
+	}
+
+	s.store.SetFlash(user, s.i18n.T(lang, "config_saved"))
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
@@ -283,7 +365,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 
 	timeout := btn.Timeout
 	if timeout <= 0 {
-		timeout = cfg.Server.DefaultSSHTimeout
+		timeout = cfg.Server.Timeout
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout+3)*time.Second)

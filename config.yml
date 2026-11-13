@@ -1,127 +1,68 @@
-# SSH Buttons Configuration File
-# Declarative definition of admin credentials, servers/devices, and action buttons.
-
+# SSH Buttons Configuration
 server:
   port: 8080
-  admin_username: "admin"
-  # Admin password can be plain text or a bcrypt hash (e.g., $2a$10$...)
-  # Overridable via ADMIN_PASSWORD environment variable
-  admin_password: "adminpassword"
-  # Used to sign session authentication cookies
-  # Overridable via SESSION_SECRET environment variable
   session_secret: "change-this-to-a-secure-random-string"
-  # Default timeout in seconds for SSH commands if not specified per button
-  default_ssh_timeout: 15
+  timeout: 15
 
-# Reusable host definitions
-# Authentication supports either password or SSH private key (or both as fallback)
+users:
+  - user: "admin"
+    pass: "adminpassword"
+    role: "admin"
+  - user: "operator1"
+    pass: "operatorpassword"
+    role: "operator"
+
 hosts:
-  # Example 1: Standard Linux Server with SSH Private Key
   srv_linux:
     name: "Ubuntu Production 01"
     host: "192.168.1.10"
-    port: 22
     user: "root"
-    # Relative paths resolve against the config directory, or use absolute paths (/app/keys/id_rsa)
-    key_path: "./keys/id_ed25519"
-    # key_passphrase: "optional_passphrase"
-    insecure_ignore_host_key: true
+    key: "./keys/id_ed25519"
 
-  # Example 2: Media / Backup Server with Password Authentication
-  srv_media:
-    name: "TrueNAS Core"
-    host: "192.168.1.20"
-    port: 22
-    user: "admin"
-    password: "YourStoragePassword"
-    insecure_ignore_host_key: true
-
-  # Example 3: MikroTik RouterOS (Router/Gateway)
   router_mikrotik:
-    name: "Core Gateway (MikroTik)"
+    name: "Core Gateway"
     host: "192.168.1.1"
-    port: 22
     user: "admin"
-    password: "RouterPassword"
-    insecure_ignore_host_key: true
+    pass: "RouterPassword"
 
-  # Example 4: Cisco / Edge Switch
   switch_cisco:
     name: "Access Switch 24P"
     host: "192.168.1.2"
-    port: 22
     user: "cisco"
-    password: "CiscoEnablePassword"
-    insecure_ignore_host_key: true
+    pass: "CiscoEnablePassword"
 
-# Action buttons grouped by category
-# Supported button styles: primary, danger, warning, success, secondary
 categories:
-  - name: "Linux Server Operations"
+  - name: "Linux Operations"
+    host: "srv_linux" # Inherited by all buttons in this category
     buttons:
-      - id: "linux-docker-restart"
-        label: "Restart Docker Services"
-        description: "Restarts docker systemd unit on Ubuntu Production"
-        host: "srv_linux"
-        command: "systemctl restart docker"
-        style: "warning"
-        confirm: true
+      - name: "Restart Docker"
+        cmd: "systemctl restart docker"
+        warning: true # sets warning style + confirmation prompt
         timeout: 30
+      - name: "Check Disk Space"
+        cmd: "df -h"
+      - name: "Reboot Server"
+        cmd: "sudo reboot"
+        danger: true # sets danger style + confirmation prompt
+      - name: "Power Off Server"
+        cmd: "sudo shutdown -h now"
+        danger: true
 
-      - id: "linux-disk-usage"
-        label: "Check Disk Space"
-        description: "Inspect root and mounted volume storage"
-        host: "srv_linux"
-        command: "df -h"
-        style: "primary"
-        confirm: false
-
-      - id: "linux-reboot"
-        label: "Reboot Linux Server"
-        description: "Gracefully reboots the production server immediately"
-        host: "srv_linux"
-        command: "sudo reboot"
-        style: "danger"
-        confirm: true
-
-      - id: "linux-shutdown"
-        label: "Power Off Linux Server"
-        description: "Halt and power off host system completely"
-        host: "srv_linux"
-        command: "sudo shutdown -h now"
-        style: "danger"
-        confirm: true
-
-  - name: "Network & RouterOS Operations"
+  - name: "Network Gear"
     buttons:
-      - id: "mikrotik-reboot"
-        label: "Reboot MikroTik Router"
-        description: "Triggers /system reboot on core gateway"
+      - name: "Reboot MikroTik"
         host: "router_mikrotik"
-        command: "/system reboot"
-        style: "danger"
-        confirm: true
-
-      - id: "mikrotik-backup"
-        label: "Trigger Router Backup"
-        description: "Saves current configuration to local flash backup file"
+        cmd: "/system reboot"
+        danger: true
+      - name: "Backup MikroTik"
         host: "router_mikrotik"
-        command: "/system backup save name=auto-dashboard-backup"
+        cmd: "/system backup save name=auto-backup"
         style: "success"
-        confirm: false
-
-      - id: "cisco-save-config"
-        label: "Save Cisco Running-Config"
-        description: "Persists configuration to startup memory"
+      - name: "Save Cisco Config"
         host: "switch_cisco"
-        command: "write memory"
+        cmd: "write memory"
         style: "success"
-        confirm: false
-
-      - id: "cisco-reload"
-        label: "Reload Switch (Reboot)"
-        description: "Reloads network switch OS"
+      - name: "Reload Switch"
         host: "switch_cisco"
-        command: "reload"
-        style: "danger"
-        confirm: true
+        cmd: "reload"
+        danger: true

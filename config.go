@@ -5,55 +5,48 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
+type UserConfig struct {
+	Username string
+	Password string
+	Role     string // "admin" or "operator"
+}
+
 type ServerConfig struct {
-	Port              int    `yaml:"port"`
-	AdminUsername     string `yaml:"admin_username"`
-	AdminPassword     string `yaml:"admin_password"`
-	SessionSecret     string `yaml:"session_secret"`
-	DefaultSSHTimeout int    `yaml:"default_ssh_timeout"`
+	Port          int    `yaml:"port"`
+	SessionSecret string `yaml:"session_secret"`
+	Timeout       int    `yaml:"timeout"`
 }
 
 type HostConfig struct {
-	ID                    string `yaml:"id,omitempty"` // populated if hosts is list or map
-	Name                  string `yaml:"name"`
-	Host                  string `yaml:"host"`
-	Port                  int    `yaml:"port"`
-	User                  string `yaml:"user"`
-	Password              string `yaml:"password"`
-	KeyPath               string `yaml:"key_path"`
-	KeyPassphrase         string `yaml:"key_passphrase"`
-	InsecureIgnoreHostKey *bool  `yaml:"insecure_ignore_host_key"`
-	KnownHostsPath        string `yaml:"known_hosts_path"`
+	ID                    string `yaml:"-"`
+	Name                  string
+	Host                  string
+	Port                  int
+	User                  string
+	Password              string
+	KeyPath               string
+	KeyPassphrase         string
+	InsecureIgnoreHostKey *bool
+	KnownHostsPath        string
 }
 
 type ButtonConfig struct {
-	ID          string `yaml:"id"`
-	Label       string `yaml:"label"`
-	Description string `yaml:"description"`
-	Category    string `yaml:"category"`
-	Host        string `yaml:"host"`
-	Command     string `yaml:"command"`
-	Style       string `yaml:"style"` // primary, danger, warning, success, secondary
-	Confirm     bool   `yaml:"confirm"`
-	Timeout     int    `yaml:"timeout"` // in seconds
-}
-
-type CategoryConfig struct {
-	Name    string         `yaml:"name"`
-	Buttons []ButtonConfig `yaml:"buttons"`
-}
-
-type RawConfig struct {
-	Server     ServerConfig          `yaml:"server"`
-	Hosts      map[string]HostConfig `yaml:"hosts"`
-	Buttons    []ButtonConfig        `yaml:"buttons"`
-	Categories []CategoryConfig      `yaml:"categories"`
+	ID          string
+	Label       string
+	Description string
+	Category    string
+	Host        string
+	Command     string
+	Style       string // primary, danger, warning, success, secondary
+	Confirm     bool
+	Timeout     int // seconds
 }
 
 type NormalizedCategory struct {
@@ -62,12 +55,14 @@ type NormalizedCategory struct {
 }
 
 type AppConfig struct {
-	Server        ServerConfig
-	Hosts         map[string]HostConfig
-	ButtonsByID   map[string]ButtonConfig
-	Categories    []NormalizedCategory
-	LoadedAt      time.Time
-	ConfigPath    string
+	Server          ServerConfig
+	Users           []UserConfig
+	UsersByUsername map[string]UserConfig
+	Hosts           map[string]HostConfig
+	ButtonsByID     map[string]ButtonConfig
+	Categories      []NormalizedCategory
+	LoadedAt        time.Time
+	ConfigPath      string
 }
 
 type ConfigManager struct {
@@ -102,118 +97,334 @@ func (cm *ConfigManager) Reload() error {
 	return nil
 }
 
+func (cm *ConfigManager) ReadRawConfigFile() (string, error) {
+	cm.mu.RLock()
+	p := cm.path
+	cm.mu.RUnlock()
+
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func (cm *ConfigManager) SaveConfigFile(content []byte) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	// 1. In-memory validation
+	var raw rawRoot
+	if err := yaml.Unmarshal(content, &raw); err != nil {
+		return fmt.Errorf("YAML validation error: %w", err)
+	}
+
+	// 2. Backup existing file
+	if existingData, err := os.ReadFile(cm.path); err == nil {
+		_ = os.WriteFile(cm.path+".bak", existingData, 0644)
+	}
+
+	// 3. Write directly to preserve Docker bind-mount inode
+	f, err := os.OpenFile(cm.path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open config file for writing: %w", err)
+	}
+	if _, err := f.Write(content); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to write config content: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to sync config file: %w", err)
+	}
+	f.Close()
+
+	// 4. Reload in memory
+	cfg, err := loadConfigFromFile(cm.path)
+	if err != nil {
+		return fmt.Errorf("failed to reload updated config: %w", err)
+	}
+	cm.config = cfg
+	return nil
+}
+
+// Internal raw unmarshaling types for clean YAML schema
+type rawUser struct {
+	User     string `yaml:"user"`
+	Username string `yaml:"username"`
+	Pass     string `yaml:"pass"`
+	Password string `yaml:"password"`
+	Role     string `yaml:"role"`
+}
+
+type rawHost struct {
+	Name           string `yaml:"name"`
+	Host           string `yaml:"host"`
+	Address        string `yaml:"address"`
+	Port           int    `yaml:"port"`
+	User           string `yaml:"user"`
+	Pass           string `yaml:"pass"`
+	Password       string `yaml:"password"`
+	Key            string `yaml:"key"`
+	KeyPath        string `yaml:"key_path"`
+	KeyPassphrase  string `yaml:"key_passphrase"`
+	Insecure       *bool  `yaml:"insecure"`
+	KnownHostsPath string `yaml:"known_hosts"`
+}
+
+type rawButton struct {
+	ID          string `yaml:"id"`
+	Name        string `yaml:"name"`
+	Label       string `yaml:"label"`
+	Cmd         string `yaml:"cmd"`
+	Command     string `yaml:"command"`
+	Host        string `yaml:"host"`
+	Style       string `yaml:"style"`
+	Confirm     bool   `yaml:"confirm"`
+	Danger      bool   `yaml:"danger"`
+	Warning     bool   `yaml:"warning"`
+	Timeout     int    `yaml:"timeout"`
+	Description string `yaml:"description"`
+}
+
+type rawCategory struct {
+	Name    string      `yaml:"name"`
+	Host    string      `yaml:"host"`
+	Buttons []rawButton `yaml:"buttons"`
+}
+
+type rawRoot struct {
+	Server     ServerConfig        `yaml:"server"`
+	Users      []rawUser           `yaml:"users"`
+	Hosts      map[string]rawHost  `yaml:"hosts"`
+	Categories []rawCategory       `yaml:"categories"`
+	Buttons    []rawButton         `yaml:"buttons"` // optional top-level buttons
+}
+
 func loadConfigFromFile(path string) (*AppConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
 	}
 
-	var raw RawConfig
+	var raw rawRoot
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse yaml config: %w", err)
 	}
 
-	// Apply default server settings
-	if raw.Server.Port == 0 {
-		raw.Server.Port = 8080
+	// 1. Server settings & defaults
+	server := raw.Server
+	if server.Port == 0 {
+		server.Port = 8080
 	}
-	if raw.Server.AdminUsername == "" {
-		raw.Server.AdminUsername = "admin"
+	if server.SessionSecret == "" {
+		server.SessionSecret = "ssh-buttons-session-key-change-me"
 	}
-	if raw.Server.AdminPassword == "" {
-		raw.Server.AdminPassword = "admin"
-	}
-	if raw.Server.SessionSecret == "" {
-		raw.Server.SessionSecret = "ssh-buttons-session-key-change-me"
-	}
-	if raw.Server.DefaultSSHTimeout <= 0 {
-		raw.Server.DefaultSSHTimeout = 15
+	if server.Timeout <= 0 {
+		server.Timeout = 15
 	}
 
 	// Environment variable overrides
 	if envPort := os.Getenv("PORT"); envPort != "" {
 		if p, err := strconv.Atoi(envPort); err == nil && p > 0 {
-			raw.Server.Port = p
+			server.Port = p
 		}
 	}
-	if envUser := os.Getenv("ADMIN_USER"); envUser != "" {
-		raw.Server.AdminUsername = envUser
-	} else if envUser := os.Getenv("ADMIN_USERNAME"); envUser != "" {
-		raw.Server.AdminUsername = envUser
-	}
-	if envPass := os.Getenv("ADMIN_PASSWORD"); envPass != "" {
-		raw.Server.AdminPassword = envPass
-	} else if envPass := os.Getenv("ADMIN_PASS"); envPass != "" {
-		raw.Server.AdminPassword = envPass
-	}
 	if envSecret := os.Getenv("SESSION_SECRET"); envSecret != "" {
-		raw.Server.SessionSecret = envSecret
+		server.SessionSecret = envSecret
 	}
 
-	// Process Hosts
+	// 2. Process Users
+	usersByUsername := make(map[string]UserConfig)
+	var normalizedUsers []UserConfig
+
+	for _, ru := range raw.Users {
+		uname := ru.User
+		if uname == "" {
+			uname = ru.Username
+		}
+		uname = strings.TrimSpace(uname)
+		if uname == "" {
+			continue
+		}
+
+		pwd := ru.Pass
+		if pwd == "" {
+			pwd = ru.Password
+		}
+
+		role := ru.Role
+		if role == "" {
+			role = "admin"
+		}
+
+		u := UserConfig{
+			Username: uname,
+			Password: pwd,
+			Role:     role,
+		}
+		usersByUsername[uname] = u
+		normalizedUsers = append(normalizedUsers, u)
+	}
+
+	// Support env ADMIN_USER / ADMIN_PASSWORD override or fallback if no users defined
+	envAdminUser := os.Getenv("ADMIN_USER")
+	if envAdminUser == "" {
+		envAdminUser = os.Getenv("ADMIN_USERNAME")
+	}
+	envAdminPass := os.Getenv("ADMIN_PASSWORD")
+	if envAdminPass == "" {
+		envAdminPass = os.Getenv("ADMIN_PASS")
+	}
+
+	if envAdminUser != "" && envAdminPass != "" {
+		adminUser := UserConfig{
+			Username: envAdminUser,
+			Password: envAdminPass,
+			Role:     "admin",
+		}
+		usersByUsername[envAdminUser] = adminUser
+		normalizedUsers = append([]UserConfig{adminUser}, normalizedUsers...)
+	} else if len(normalizedUsers) == 0 {
+		// Default admin account if users block is completely empty
+		defaultAdmin := UserConfig{
+			Username: "admin",
+			Password: "adminpassword",
+			Role:     "admin",
+		}
+		usersByUsername["admin"] = defaultAdmin
+		normalizedUsers = append(normalizedUsers, defaultAdmin)
+	}
+
+	// 3. Process Hosts
 	normalizedHosts := make(map[string]HostConfig)
-	for id, h := range raw.Hosts {
-		h.ID = id
-		if h.Port == 0 {
-			h.Port = 22
+	for id, rh := range raw.Hosts {
+		h := HostConfig{
+			ID:   id,
+			Name: rh.Name,
+			Host: rh.Host,
+			Port: rh.Port,
+			User: rh.User,
 		}
 		if h.Name == "" {
 			h.Name = id
 		}
-		// Resolve relative key path against config file directory
+		if h.Host == "" {
+			h.Host = rh.Address
+		}
+		if h.Port == 0 {
+			h.Port = 22
+		}
+
+		h.Password = rh.Pass
+		if h.Password == "" {
+			h.Password = rh.Password
+		}
+
+		h.KeyPath = rh.Key
+		if h.KeyPath == "" {
+			h.KeyPath = rh.KeyPath
+		}
 		if h.KeyPath != "" && !filepath.IsAbs(h.KeyPath) {
 			h.KeyPath = filepath.Clean(filepath.Join(filepath.Dir(path), h.KeyPath))
 		}
-		// Default to insecure ignore host key = true for easy homelab usage if not specified
-		if h.InsecureIgnoreHostKey == nil {
+		h.KeyPassphrase = rh.KeyPassphrase
+		h.KnownHostsPath = rh.KnownHostsPath
+
+		// Default insecure host key = true for easy homelab usage
+		if rh.Insecure != nil {
+			h.InsecureIgnoreHostKey = rh.Insecure
+		} else {
 			defaultInsecure := true
 			h.InsecureIgnoreHostKey = &defaultInsecure
 		}
+
 		normalizedHosts[id] = h
 	}
 
-	// Process Buttons & Categories
+	// 4. Process Categories & Buttons
 	buttonsByID := make(map[string]ButtonConfig)
 	categoryMap := make(map[string][]ButtonConfig)
 	var categoryOrder []string
 
-	recordButton := func(catName string, btn ButtonConfig) {
-		if btn.ID == "" {
+	recordButton := func(catName, defaultHost string, rb rawButton) {
+		label := rb.Name
+		if label == "" {
+			label = rb.Label
+		}
+		label = strings.TrimSpace(label)
+		if label == "" {
 			return
 		}
-		if btn.Style == "" {
-			btn.Style = "primary"
-		}
-		if btn.Timeout <= 0 {
-			btn.Timeout = raw.Server.DefaultSSHTimeout
-		}
-		btn.Category = catName
-		buttonsByID[btn.ID] = btn
 
+		cmd := rb.Cmd
+		if cmd == "" {
+			cmd = rb.Command
+		}
+
+		targetHost := rb.Host
+		if targetHost == "" {
+			targetHost = defaultHost
+		}
+
+		style := rb.Style
+		confirm := rb.Confirm
+
+		// Resolve shorthand flags
+		if rb.Danger {
+			style = "danger"
+			confirm = true
+		} else if rb.Warning {
+			style = "warning"
+			confirm = true
+		}
+		if style == "" {
+			style = "primary"
+		}
+
+		timeout := rb.Timeout
+		if timeout <= 0 {
+			timeout = server.Timeout
+		}
+
+		btnID := rb.ID
+		if btnID == "" {
+			btnID = slugify(catName + "_" + label)
+		}
+
+		btn := ButtonConfig{
+			ID:          btnID,
+			Label:       label,
+			Description: rb.Description,
+			Category:    catName,
+			Host:        targetHost,
+			Command:     cmd,
+			Style:       style,
+			Confirm:     confirm,
+			Timeout:     timeout,
+		}
+
+		buttonsByID[btn.ID] = btn
 		if _, exists := categoryMap[catName]; !exists {
 			categoryOrder = append(categoryOrder, catName)
 		}
 		categoryMap[catName] = append(categoryMap[catName], btn)
 	}
 
-	// 1. Process from raw.Categories
+	// Process categories
 	for _, cat := range raw.Categories {
 		catName := cat.Name
 		if catName == "" {
 			catName = "General"
 		}
 		for _, btn := range cat.Buttons {
-			recordButton(catName, btn)
+			recordButton(catName, cat.Host, btn)
 		}
 	}
 
-	// 2. Process from raw.Buttons
+	// Process top-level buttons if any
 	for _, btn := range raw.Buttons {
-		catName := btn.Category
-		if catName == "" {
-			catName = "General"
-		}
-		recordButton(catName, btn)
+		recordButton("General", "", btn)
 	}
 
 	var categories []NormalizedCategory
@@ -225,11 +436,33 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 	}
 
 	return &AppConfig{
-		Server:      raw.Server,
-		Hosts:       normalizedHosts,
-		ButtonsByID: buttonsByID,
-		Categories:  categories,
-		LoadedAt:    time.Now(),
-		ConfigPath:  path,
+		Server:          server,
+		Users:           normalizedUsers,
+		UsersByUsername: usersByUsername,
+		Hosts:           normalizedHosts,
+		ButtonsByID:     buttonsByID,
+		Categories:      categories,
+		LoadedAt:        time.Now(),
+		ConfigPath:      path,
 	}, nil
+}
+
+func slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else if r == ' ' || r == '-' || r == '_' {
+			b.WriteRune('-')
+		}
+	}
+	res := strings.Trim(b.String(), "-")
+	for strings.Contains(res, "--") {
+		res = strings.ReplaceAll(res, "--", "-")
+	}
+	if res == "" {
+		return fmt.Sprintf("btn-%d", time.Now().UnixNano()%100000)
+	}
+	return res
 }

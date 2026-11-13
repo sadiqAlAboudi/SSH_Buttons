@@ -12,6 +12,8 @@ A lightweight, self-contained, Docker Compose-ready web dashboard in Go that act
 
 - **Self-Contained & Air-Gapped**: Single binary with embedded templates, icons, and CSS (`//go:embed`). Zero external CDNs or third-party dependencies loaded at runtime.
 - **YAML-Driven**: Define hosts, authentication methods, categories, and command buttons in a clean, human-readable `config.yml`.
+- **Multi-User & Role-Based Access (RBAC)**: Support multiple user accounts with `admin` and `operator` roles. Operators trigger actions, while only administrators can edit system configuration.
+- **In-Browser WebUI Config Editor**: Safely view and edit `config.yml` directly in the browser with pre-save YAML validation, automated backups, and instant reloading.
 - **Hot-Reloadable**: Update `config.yml` at any time and click **"Reload Config"** in the header to apply changes immediately without container restarts.
 - **Secure Authentication**: Protected dashboard routes with `HttpOnly` HMAC-signed session cookies and constant-time password verification (supporting both plaintext and bcrypt hashes).
 - **Bilingual (Arabic & English) with RTL Support**: Instant language switcher on login and dashboard screens with complete Right-To-Left (`dir="rtl"`) layout and Arabic translations.
@@ -78,59 +80,57 @@ The dashboard is driven by a single YAML file:
 ```yaml
 server:
   port: 8080
-  admin_username: "admin"
-  admin_password: "adminpassword" # Plaintext or $2a$... bcrypt hash
   session_secret: "a-very-secret-random-key"
-  default_ssh_timeout: 15 # Seconds
+  timeout: 15 # Default command timeout in seconds
+
+users:
+  - user: "admin"
+    pass: "adminpassword" # Plaintext or $2a$... bcrypt hash
+    role: "admin"
+  - user: "operator1"
+    pass: "operatorpassword"
+    role: "operator"
 
 hosts:
   srv_linux:
     name: "Ubuntu Production 01"
     host: "192.168.1.10"
-    port: 22
     user: "root"
-    key_path: "./keys/id_ed25519" # Relative or absolute path
-    insecure_ignore_host_key: true
+    key: "./keys/id_ed25519"
 
   router_mikrotik:
-    name: "Core Gateway (MikroTik)"
+    name: "Core Gateway"
     host: "192.168.1.1"
-    port: 22
     user: "admin"
-    password: "RouterPassword"
-    insecure_ignore_host_key: true
+    pass: "RouterPassword"
 
 categories:
-  - name: "Linux Server Operations"
+  - name: "Linux Operations"
+    host: "srv_linux" # Inherited by all buttons below
     buttons:
-      - id: "linux-docker-restart"
-        label: "Restart Docker Services"
-        description: "Restarts docker unit on Ubuntu server"
-        host: "srv_linux"
-        command: "systemctl restart docker"
-        style: "warning" # primary | danger | warning | success | secondary
-        confirm: true
+      - name: "Restart Docker"
+        cmd: "systemctl restart docker"
+        warning: true # Auto-configures warning style + confirmation modal
         timeout: 30
 
-      - id: "linux-reboot"
-        label: "Reboot Server"
-        description: "Reboots Ubuntu host immediately"
-        host: "srv_linux"
-        command: "sudo reboot"
-        style: "danger"
-        confirm: true
+      - name: "Check Disk Space"
+        cmd: "df -h"
+
+      - name: "Reboot Server"
+        cmd: "sudo reboot"
+        danger: true # Auto-configures danger style + confirmation modal
 ```
 
 ### Environment Variable Overrides
 
-Any value in `server` can be overridden by environment variables:
+Values can be overridden at runtime via environment variables:
 
 | Variable | Description |
 | :--- | :--- |
 | `PORT` | Listening port (default `8080`) |
-| `ADMIN_USERNAME` | Admin login user (default `admin`) |
-| `ADMIN_PASSWORD` | Admin login password |
-| `SESSION_SECRET` | HMAC cookie secret |
+| `SESSION_SECRET` | HMAC cookie signing secret |
+| `ADMIN_USER` | Runtime override/injection for admin username |
+| `ADMIN_PASSWORD` | Runtime override/injection for admin password |
 | `CONFIG_PATH` | Path to configuration file (default `config.yml`) |
 
 ---

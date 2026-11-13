@@ -580,7 +580,17 @@
           <span>{{.OtherLabel}}</span>
         </a>
 
-        <!-- Reload Config Button -->
+        {{if .IsAdmin}}
+        <!-- Config Editor Button (Admin only) -->
+        <a href="/config" class="btn-header" title="{{.T.config_editor}}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+          </svg>
+          <span>{{.T.config_editor}}</span>
+        </a>
+
+        <!-- Reload Config Button (Admin only) -->
         <form method="POST" action="/reload" style="display:inline;">
           <button type="submit" class="btn-header" title="{{.T.reload_config}}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -589,6 +599,7 @@
             <span>{{.T.reload_config}}</span>
           </button>
         </form>
+        {{end}}
 
         <!-- Logout Button -->
         <form method="POST" action="/logout" style="display:inline;">

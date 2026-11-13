@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,9 +19,15 @@ func TestAuthCredentialsAndTokens(t *testing.T) {
 
 	yamlContent := `
 server:
-  admin_username: "sysadmin"
-  admin_password: "` + string(hashed) + `"
   session_secret: "super-secret-signing-key"
+
+users:
+  - user: "sysadmin"
+    pass: "` + string(hashed) + `"
+    role: "admin"
+  - user: "operator_bob"
+    pass: "plainbobpassword"
+    role: "operator"
 `
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yml")
@@ -34,9 +42,20 @@ server:
 
 	auth := NewAuthService(cm)
 
-	// Test valid credentials
+	// Test valid credentials for admin
 	if !auth.CheckCredentials("sysadmin", "secretbcrypt") {
 		t.Errorf("CheckCredentials failed with valid bcrypt password")
+	}
+	if role := auth.GetUserRole("sysadmin"); role != "admin" {
+		t.Errorf("Expected role 'admin' for sysadmin, got %s", role)
+	}
+
+	// Test valid credentials for operator
+	if !auth.CheckCredentials("operator_bob", "plainbobpassword") {
+		t.Errorf("CheckCredentials failed with valid plain password for operator")
+	}
+	if role := auth.GetUserRole("operator_bob"); role != "operator" {
+		t.Errorf("Expected role 'operator' for operator_bob, got %s", role)
 	}
 
 	// Test invalid credentials
@@ -58,5 +77,32 @@ server:
 	tampered := token + "tampered"
 	if _, valid := auth.ValidateSessionToken(tampered); valid {
 		t.Errorf("ValidateSessionToken accepted tampered token")
+	}
+
+	// Test RequireAdmin middleware
+	adminHandlerCalled := false
+	dummyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		adminHandlerCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+	guarded := auth.RequireAdmin(dummyHandler)
+
+	// Operator should be forbidden (403)
+	opToken := auth.GenerateSessionToken("operator_bob")
+	reqOp := httptest.NewRequest("GET", "/config", nil)
+	reqOp.AddCookie(&http.Cookie{Name: sessionCookieName, Value: opToken})
+	rrOp := httptest.NewRecorder()
+	guarded.ServeHTTP(rrOp, reqOp)
+	if rrOp.Code != http.StatusForbidden {
+		t.Errorf("Expected 403 Forbidden for operator accessing admin route, got %d", rrOp.Code)
+	}
+
+	// Admin should be allowed (200)
+	reqAdmin := httptest.NewRequest("GET", "/config", nil)
+	reqAdmin.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+	rrAdmin := httptest.NewRecorder()
+	guarded.ServeHTTP(rrAdmin, reqAdmin)
+	if rrAdmin.Code != http.StatusOK || !adminHandlerCalled {
+		t.Errorf("Expected 200 OK for admin accessing admin route, got %d (called=%v)", rrAdmin.Code, adminHandlerCalled)
 	}
 }
