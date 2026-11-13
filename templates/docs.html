@@ -46,7 +46,7 @@
       border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
-      z-index: 40;
+      z-index: 50;
       padding: 0 1rem;
       min-height: 52px;
       display: flex;
@@ -106,6 +106,115 @@
       color: var(--text);
       border-color: var(--border-hover);
       background: var(--surface-elevated);
+    }
+    .btn-header:active {
+      transform: translateY(1px);
+    }
+
+    /* Hamburger Menu Button */
+    .btn-hamburger {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+      flex-shrink: 0;
+    }
+    .btn-hamburger:hover {
+      color: var(--text);
+      border-color: var(--border-hover);
+      background: var(--surface-elevated);
+    }
+    .btn-hamburger:active {
+      transform: translateY(1px);
+    }
+    .btn-hamburger .icon-close {
+      display: none;
+    }
+    .btn-hamburger[aria-expanded="true"] .icon-menu {
+      display: none;
+    }
+    .btn-hamburger[aria-expanded="true"] .icon-close {
+      display: block;
+    }
+
+    /* Mobile Backdrop */
+    .nav-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      z-index: 45;
+    }
+    .nav-backdrop.is-open {
+      display: block;
+    }
+
+    @media (max-width: 768px) {
+      .btn-hamburger {
+        display: inline-flex;
+      }
+      .header-actions {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.65);
+        flex-direction: column;
+        padding: 0.75rem 1rem 1rem 1rem;
+        gap: 0.5rem;
+        z-index: 50;
+      }
+      .header-actions.is-open {
+        display: flex;
+        animation: navSlideDown 0.18s ease-out;
+      }
+      .header-actions .btn-header {
+        width: 100%;
+        justify-content: flex-start;
+        padding: 0.65rem 0.85rem;
+        font-size: 0.875rem;
+        min-height: 44px;
+      }
+      .header-actions form {
+        width: 100%;
+        display: block !important;
+      }
+      .header-actions form .btn-header {
+        width: 100%;
+      }
+    }
+    @keyframes navSlideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 480px) {
+      .brand-title {
+        font-size: 0.95rem;
+        max-width: 220px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
     }
     .container {
       width: 100%;
@@ -208,23 +317,34 @@
     tr:last-child td {
       border-bottom: none;
     }
+
+    /* STRICT LTR FOR ALL CODE BLOCKS & INLINE SNIPPETS */
+    code, kbd, samp, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      direction: ltr !important;
+      text-align: left !important;
+      unicode-bidi: isolate;
+    }
     code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 0.8125rem;
       background: var(--surface-inset);
       padding: 0.15rem 0.35rem;
       border-radius: 4px;
       color: #93c5fd;
       border: 1px solid var(--border);
+      display: inline-block;
     }
 
-    /* Code Snippets */
+    /* Code Snippets & Blueprint Cards */
     .snippet-box {
       background: var(--code-bg);
       border: 1px solid var(--border);
       border-radius: 6px;
       margin: 1rem 0;
       position: relative;
+      direction: ltr !important;
+      text-align: left !important;
+      unicode-bidi: isolate;
     }
     .snippet-header {
       display: flex;
@@ -236,15 +356,20 @@
       color: var(--text-dim);
       background: var(--surface-inset);
       border-radius: 5px 5px 0 0;
+      direction: ltr !important;
+      text-align: left !important;
     }
     .snippet-body {
       padding: 0.85rem 1rem;
       overflow-x: auto;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
       font-size: 0.8125rem;
       line-height: 1.5;
       color: #e2e8f0;
       white-space: pre;
+      direction: ltr !important;
+      text-align: left !important;
+      unicode-bidi: isolate;
     }
     .btn-copy {
       background: transparent;
@@ -255,13 +380,14 @@
       font-size: 0.75rem;
       cursor: pointer;
       transition: all 0.15s ease;
+      font-family: inherit;
     }
     .btn-copy:hover {
       color: var(--text);
       background: var(--surface-elevated);
     }
 
-    /* Note badge */
+    /* Note badges */
     .badge {
       display: inline-block;
       padding: 0.15rem 0.45rem;
@@ -290,7 +416,20 @@
         <span class="brand-title">{{.T.app_title}} / {{.T.docs}}</span>
       </a>
 
-      <div class="header-actions">
+      <!-- Mobile Hamburger Button -->
+      <button type="button" class="btn-hamburger" id="hamburgerBtn" aria-label="{{.T.menu}}" aria-expanded="false" aria-controls="headerActions">
+        <svg class="icon-menu" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+        <svg class="icon-close" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      <div class="header-actions" id="headerActions">
         <!-- Back to Dashboard -->
         <a href="/" class="btn-header">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -315,6 +454,7 @@
       </div>
     </div>
   </header>
+  <div class="nav-backdrop" id="navBackdrop"></div>
 
   <main class="container">
     <div class="hero">
@@ -340,19 +480,19 @@
       </h2>
       {{if eq .Lang "ar"}}
       <p class="section-desc">
-        تُدار إعدادات الخادم والشبكة الأساسية عبر <strong>متغيرات البيئة</strong> في ملف <code>docker-compose.yml</code> وليس داخل ملف <code>config.yml</code>، لتفادي تكرار القيم وضمان أمان المفاتيح الحساسة.
+        تُضبط إعدادات الخادم والشبكة المركزية عن طريق <strong>متغيرات البيئة (Environment Variables)</strong> في ملف <code>docker-compose.yml</code>، لتفادي تكرار القيم في ملف <code>config.yml</code> وتأمين المفاتيح والرموز الحساسة.
       </p>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>المتغير</th><th>القيمة الافتراضية</th><th>الوصف</th></tr>
+            <tr><th>المتغير</th><th>القيمة الافتراضية</th><th>الوصف والتأثير</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>PORT</code></td><td><code>8080</code></td><td>منفذ الاستماع لخدمة الويب داخل الحاوية وعلى النظام.</td></tr>
+            <tr><td><code>PORT</code></td><td><code>8080</code></td><td>منفذ الاستماع لخدمة الويب داخل الحاوية وعلى النظام المضيف.</td></tr>
             <tr><td><code>TIMEOUT</code></td><td><code>15</code></td><td>مهلة تنفيذ أوامر SSH بالثواني لجميع الأزرار افتراضياً.</td></tr>
-            <tr><td><code>SESSION_SECRET</code></td><td><i>(مفتاح تلقائي)</i></td><td>مفتاح HMAC السري لتوقيع رموز الجلسات وحماية CSRF.</td></tr>
-            <tr><td><code>ADMIN_USER</code></td><td><i>(اختياري)</i></td><td>تجاوز اسم حساب المدير عبر متغيرات البيئة.</td></tr>
-            <tr><td><code>ADMIN_PASSWORD</code></td><td><i>(اختياري)</i></td><td>تجاوز كلمة مرور حساب المدير عبر متغيرات البيئة.</td></tr>
+            <tr><td><code>SESSION_SECRET</code></td><td><i>(مفتاح مشفر)</i></td><td>المفتاح السري لتوقيع رموز الجلسات (HMAC) والتحقق من حماية CSRF.</td></tr>
+            <tr><td><code>ADMIN_USER</code></td><td><i>(اختياري)</i></td><td>تجاوز اسم حساب المدير تلقائياً عبر متغيرات البيئة.</td></tr>
+            <tr><td><code>ADMIN_PASSWORD</code></td><td><i>(اختياري)</i></td><td>تجاوز كلمة مرور حساب المدير تلقائياً عبر متغيرات البيئة.</td></tr>
           </tbody>
         </table>
       </div>
@@ -363,14 +503,14 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+            <tr><th>Variable</th><th>Default</th><th>Description & Impact</th></tr>
           </thead>
           <tbody>
             <tr><td><code>PORT</code></td><td><code>8080</code></td><td>HTTP listen port for container and bare-metal runs.</td></tr>
             <tr><td><code>TIMEOUT</code></td><td><code>15</code></td><td>Global SSH command execution timeout in seconds.</td></tr>
             <tr><td><code>SESSION_SECRET</code></td><td><i>(generated)</i></td><td>HMAC secret key used for signing session cookies and CSRF tokens.</td></tr>
-            <tr><td><code>ADMIN_USER</code></td><td><i>(optional)</i></td><td>Override admin username via environment.</td></tr>
-            <tr><td><code>ADMIN_PASSWORD</code></td><td><i>(optional)</i></td><td>Override admin password via environment.</td></tr>
+            <tr><td><code>ADMIN_USER</code></td><td><i>(optional)</i></td><td>Override admin username via environment variable.</td></tr>
+            <tr><td><code>ADMIN_PASSWORD</code></td><td><i>(optional)</i></td><td>Override admin password via environment variable.</td></tr>
           </tbody>
         </table>
       </div>
@@ -385,25 +525,25 @@
       </h2>
       {{if eq .Lang "ar"}}
       <p class="section-desc">
-        يدعم النظام نظام صلاحيات متعدد المستخدمين (RBAC) مع نوعين من الأدوار:
+        يوفر النظام إدارة دقيقة لصلاحيات المستخدمين (RBAC) لدعم فرق العمل والعمليات:
       </p>
       <ul style="margin: 0 1.25rem 1rem 1.25rem; font-size: 0.875rem; color: var(--text-muted);">
-        <li><strong style="color:var(--text)">admin:</strong> صلاحيات كاملة: تشغيل الأزرار، تعديل وحفظ <code>config.yml</code> مباشرة في المتصفح، وإعادة تحميل الإعدادات.</li>
-        <li><strong style="color:var(--text)">operator:</strong> تشغيل أزرار الأوامر المصرح بها وعرض النتائج فقط (دون الوصول لمحرر الإعدادات).</li>
+        <li><strong style="color:var(--text)">admin (المدير):</strong> صلاحيات غير محدودة تشمل تشغيل الأوامر، تحرير وحفظ ملف <code>config.yml</code> مباشرة في المتصفح، وإعادة تحميل الإعدادات.</li>
+        <li><strong style="color:var(--text)">operator (المشغل):</strong> مقتصر على تشغيل أزرار الأوامر المصرح بها واستعراض سجلات المخرجات، مع حظر الوصول لصفحة التحرير.</li>
       </ul>
       <p class="section-desc">
-        تدعم كلمات المرور كل من النص الصريح (Plaintext) ورموز التشفير المؤمنة <strong>Bcrypt</strong> (التي تبدأ بـ <code>$2a$</code> أو <code>$2b$</code>).
+        تدعم كلمات المرور النصوص الصريحة للتجارب السريعة، وتجزئات <strong>Bcrypt</strong> المؤمنة (التي تبدأ بـ <code>$2a$</code> أو <code>$2b$</code>) الموصى بها لبيئات الإنتاج.
       </p>
       {{else}}
       <p class="section-desc">
-        Role-Based Access Control (RBAC) supports two distinct user privileges:
+        Role-Based Access Control (RBAC) supports two distinct user privilege tiers:
       </p>
       <ul style="margin: 0 1.25rem 1rem 1.25rem; font-size: 0.875rem; color: var(--text-muted);">
-        <li><strong style="color:var(--text)">admin:</strong> Full access: execute commands, edit & save <code>config.yml</code> in the WebUI, and reload configuration.</li>
-        <li><strong style="color:var(--text)">operator:</strong> Limited to executing authorized action buttons and viewing output logs.</li>
+        <li><strong style="color:var(--text)">admin:</strong> Full access: execute commands, edit & save <code>config.yml</code> in the WebUI, and reload configurations.</li>
+        <li><strong style="color:var(--text)">operator:</strong> Limited to executing authorized action buttons and viewing command outputs (cannot access editor).</li>
       </ul>
       <p class="section-desc">
-        Passwords support both plaintext and secure <strong>bcrypt</strong> hashes (prefixed with <code>$2a$</code> or <code>$2b$</code>).
+        Passwords support both plaintext (for local labs) and secure <strong>bcrypt</strong> hashes (prefixed with <code>$2a$</code> or <code>$2b$</code>) for production environments.
       </p>
       {{end}}
 
@@ -431,33 +571,33 @@
       </h2>
       {{if eq .Lang "ar"}}
       <p class="section-desc">
-        تُعرّف الأجهزة المستهدفة ضمن قسم <code>hosts:</code>. يدعم النظام خوادم Linux وأجهزة شبكات MikroTik ومحولات Cisco.
+        تُعرّف الأجهزة والخوادم في قسم <code>hosts:</code>. يتوافق النظام تماماً مع خوادم Linux وأجهزة شبكات MikroTik RouterOS ومحولات Cisco Catalyst.
       </p>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>الحقل</th><th>النوع</th><th>الوصف والاستخدام</th></tr>
+            <tr><th>الحقل</th><th>الحالة</th><th>الوصف والاستخدام</th></tr>
           </thead>
           <tbody>
             <tr><td><code>host</code></td><td>مطلوب</td><td>عنوان IP أو اسم النطاق للجهاز الهدف.</td></tr>
-            <tr><td><code>user</code></td><td>مطلوب</td><td>اسم مستخدم تسجيل الدخول عبر SSH.</td></tr>
+            <tr><td><code>user</code></td><td>مطلوب</td><td>اسم مستخدم تسجيل الدخول عبر بروتوكول SSH.</td></tr>
             <tr><td><code>port</code></td><td>اختياري</td><td>منفذ SSH (الافتراضي: <code>22</code>).</td></tr>
-            <tr><td><code>key</code> / <code>key_path</code></td><td>اختياري</td><td>مسار مفتاح SSH الخاص (نسبي أو مطلق).</td></tr>
-            <tr><td><code>pass</code> / <code>password</code></td><td>اختياري</td><td>كلمة مرور SSH في حال عدم توفر المفتاح.</td></tr>
-            <tr><td><code>pty: true</code></td><td>مهم للشبكات</td><td>تفعيل محاكي الطرفية التفاعلية (PTY Shell). <strong>مطلوب لأجهزة Cisco ومحولات الشبكة</strong> التي ترفض أوامر exec غير التفاعلية.</td></tr>
-            <tr><td><code>legacy_ciphers: true</code></td><td>مهم للأجهزة القديمة</td><td>تفعيل خوارزميات التشفير وتبادل المفاتيح القديمة (Diffie-Hellman group1/14, 3DES, AES-CBC, ssh-rsa) لأجهزة Cisco Catalyst و RouterOS v6 القديمة.</td></tr>
-            <tr><td><code>insecure: false</code></td><td>اختياري</td><td>إلزام التحقق من بصمة الجهاز عبر ملف <code>known_hosts</code> (افتراضياً: <code>true</code> لتسهيل العمل في الشبكات المحلية).</td></tr>
+            <tr><td><code>key</code> / <code>key_path</code></td><td>اختياري</td><td>مسار مفتاح SSH الخاص (نسبي إلى مجلد الإعدادات أو مطلق).</td></tr>
+            <tr><td><code>pass</code> / <code>password</code></td><td>اختياري</td><td>كلمة مرور SSH في حال عدم استخدام المفاتيح الخاصة.</td></tr>
+            <tr><td><code>pty: true</code></td><td>أساسي للشبكات</td><td>تفعيل جلسة الطرفية التفاعلية (PTY Shell). <strong>ضروري لأجهزة Cisco ومحولات الشبكة</strong> التي ترفض قنوات <code>exec</code> غير التفاعلية.</td></tr>
+            <tr><td><code>legacy_ciphers: true</code></td><td>للأجهزة القديمة</td><td>تفعيل خوارزميات التشفير وتبادل المفاتيح التراثية (Diffie-Hellman group1/14, 3DES, AES-CBC, ssh-rsa) لأجهزة Cisco القديمة و RouterOS v6.</td></tr>
+            <tr><td><code>insecure: false</code></td><td>اختياري</td><td>إلزام مطابقة بصمة الخادم عبر ملف <code>known_hosts</code> (افتراضياً: <code>true</code> لمرونة التشغيل المحلي).</td></tr>
           </tbody>
         </table>
       </div>
       {{else}}
       <p class="section-desc">
-        Target devices are registered under the <code>hosts:</code> map. The runner supports Linux servers, MikroTik RouterOS, and Cisco network switches.
+        Target devices are registered under the <code>hosts:</code> map. The runner natively supports Linux servers, MikroTik RouterOS, and Cisco network switches.
       </p>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Field</th><th>Type</th><th>Description & Usage</th></tr>
+            <tr><th>Field</th><th>Status</th><th>Description & Usage</th></tr>
           </thead>
           <tbody>
             <tr><td><code>host</code></td><td>Required</td><td>IP address or hostname of the remote machine.</td></tr>
@@ -482,21 +622,21 @@
       </h2>
       {{if eq .Lang "ar"}}
       <p class="section-desc">
-        تُنظّم الأزرار داخل تصنيفات <code>categories:</code>. عند تحديد <code>host:</code> على مستوى التصنيف، يتم <strong>توريثه تلقائياً</strong> لجميع الأزرار داخله لتجنب التكرار.
+        تُجمع الأزرار بصرياً داخل تصنيفات <code>categories:</code>. عند تحديد <code>host:</code> على مستوى التصنيف، <strong>يتم توريثه تلقائياً لجميع أزراره</strong>، مما يختصر التكرار ويسهل الصيانة.
       </p>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>الخاصية</th><th>الوصف والاستخدام</th></tr>
+            <tr><th>الخاصية</th><th>الوصف والتأثير</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>name</code></td><td>اسم الزر المعروض في الواجهة.</td></tr>
-            <tr><td><code>cmd</code></td><td>الأمر المنفذ عبر SSH على الجهاز الهدف.</td></tr>
-            <tr><td><code>stdin</code> / <code>input</code></td><td>إدخال تأكيدي تلقائي للأوامر التي تطلب موافقة، مثل <code>"y\n"</code> لإعادة تشغيل MikroTik أو <code>"\n"</code> لموافقة reload في Cisco.</td></tr>
-            <tr><td><code>danger: true</code></td><td>يطبق اللون الأحمر ويلزم نافذة تأكيد قبل التنفيذ.</td></tr>
-            <tr><td><code>warning: true</code></td><td>يطبق اللون البرتقالي ويلزم نافذة تأكيد قبل التنفيذ.</td></tr>
+            <tr><td><code>name</code></td><td>نص التسمية المعروض على الزر في الواجهة.</td></tr>
+            <tr><td><code>cmd</code></td><td>أمر الصدفة (Shell command) المنفذ عبر SSH على الجهاز الهدف.</td></tr>
+            <tr><td><code>stdin</code> / <code>input</code></td><td>إدخال تأكيدي تلقائي للأوامر التفاعلية، مثل <code>"y\n"</code> لإعادة تشغيل MikroTik أو <code>"\n"</code> لموافقة reload في Cisco.</td></tr>
+            <tr><td><code>danger: true</code></td><td>اختصار يطبق اللون القرمزي مع تفعيل نافذة تأكيد إلزامية قبل التنفيذ.</td></tr>
+            <tr><td><code>warning: true</code></td><td>اختصار يطبق اللون البرتقالي مع تفعيل نافذة تأكيد إلزامية قبل التنفيذ.</td></tr>
             <tr><td><code>style</code></td><td>لون مخصص: <code>primary</code> (افتراضي), <code>secondary</code>, <code>success</code>, <code>warning</code>, <code>danger</code>.</td></tr>
-            <tr><td><code>timeout</code></td><td>مهلة التنفيذ بالثواني (الافتراضي: مهلة الخادم 15 ثانية).</td></tr>
+            <tr><td><code>timeout</code></td><td>مهلة التنفيذ بالثواني لهذا الزر (تتجاوز مهلة الخادم العامة).</td></tr>
           </tbody>
         </table>
       </div>
@@ -516,7 +656,7 @@
             <tr><td><code>danger: true</code></td><td>Applies crimson styling and enforces a confirmation dialog before running.</td></tr>
             <tr><td><code>warning: true</code></td><td>Applies amber styling and enforces a confirmation dialog before running.</td></tr>
             <tr><td><code>style</code></td><td>Custom color: <code>primary</code> (default), <code>secondary</code>, <code>success</code>, <code>warning</code>, <code>danger</code>.</td></tr>
-            <tr><td><code>timeout</code></td><td>Execution timeout in seconds (default: server timeout 15s).</td></tr>
+            <tr><td><code>timeout</code></td><td>Execution timeout in seconds (overrides global server timeout).</td></tr>
           </tbody>
         </table>
       </div>
@@ -531,7 +671,7 @@
       </h2>
       {{if eq .Lang "ar"}}
       <p class="section-desc">
-        نماذج إعداد جاهزة للنسخ والاستخدام مع مختلف الأجهزة:
+        نماذج إعداد جاهزة ومختبرة لمختلف بيئات البنية التحتية وأجهزة الشبكة:
       </p>
       {{else}}
       <p class="section-desc">
@@ -543,7 +683,7 @@
       <h3 style="font-size: 1rem; margin: 1.25rem 0 0.5rem 0; color: #93c5fd;">&bull; Linux Server (Ubuntu / Debian / RHEL)</h3>
       <div class="snippet-box">
         <div class="snippet-header">
-          <span>Linux Host & Buttons</span>
+          <span>Linux Host &amp; Buttons</span>
           <button type="button" class="btn-copy" onclick="copySnippet(this)">{{$.T.copy_snippet}}</button>
         </div>
         <div class="snippet-body">hosts:
@@ -571,10 +711,10 @@ categories:
       </div>
 
       <!-- MikroTik Recipe -->
-      <h3 style="font-size: 1rem; margin: 1.25rem 0 0.5rem 0; color: #6ee7b7;">&bull; MikroTik RouterOS (v6 & v7)</h3>
+      <h3 style="font-size: 1rem; margin: 1.25rem 0 0.5rem 0; color: #6ee7b7;">&bull; MikroTik RouterOS (v6 &amp; v7)</h3>
       <div class="snippet-box">
         <div class="snippet-header">
-          <span>MikroTik Gateway & Automated Stdin Reboot</span>
+          <span>MikroTik Gateway &amp; Automated Stdin Reboot</span>
           <button type="button" class="btn-copy" onclick="copySnippet(this)">{{$.T.copy_snippet}}</button>
         </div>
         <div class="snippet-body">hosts:
@@ -583,7 +723,7 @@ categories:
     host: "192.168.1.1"
     user: "admin"
     pass: "RouterPassword"
-    legacy_ciphers: true # Enable for RouterOS v6
+    legacy_ciphers: true # Enable for older RouterOS v6
 
 categories:
   - name: "MikroTik Gateway"
@@ -600,10 +740,10 @@ categories:
       </div>
 
       <!-- Cisco Recipe -->
-      <h3 style="font-size: 1rem; margin: 1.25rem 0 0.5rem 0; color: #fcd34d;">&bull; Cisco Catalyst Switches & IOS-XE</h3>
+      <h3 style="font-size: 1rem; margin: 1.25rem 0 0.5rem 0; color: #fcd34d;">&bull; Cisco Catalyst Switches &amp; IOS-XE</h3>
       <div class="snippet-box">
         <div class="snippet-header">
-          <span>Cisco Switch (PTY Shell, Legacy Ciphers & Stdin)</span>
+          <span>Cisco Switch (PTY Shell, Legacy Ciphers &amp; Stdin)</span>
           <button type="button" class="btn-copy" onclick="copySnippet(this)">{{$.T.copy_snippet}}</button>
         </div>
         <div class="snippet-body">hosts:
@@ -640,7 +780,7 @@ categories:
       </h2>
       <p class="section-desc">
         {{if eq .Lang "ar"}}
-        ملف الإعداد الكامل <code>config.example.yml</code> جاهز للنسخ والتخصيص:
+        النموذج الكامل والجاهز لملف <code>config.example.yml</code> للنسخ الفوري والتخصيص:
         {{else}}
         Full <code>config.example.yml</code> reference ready for quick setup:
         {{end}}
@@ -675,6 +815,46 @@ categories:
         }, 2000);
       });
     }
+
+    // Mobile Hamburger Navigation
+    (function() {
+      const btn = document.getElementById('hamburgerBtn');
+      const nav = document.getElementById('headerActions');
+      const backdrop = document.getElementById('navBackdrop');
+
+      if (!btn || !nav) return;
+
+      function toggleNav(open) {
+        const isOpen = open !== undefined ? open : !nav.classList.contains('is-open');
+        nav.classList.toggle('is-open', isOpen);
+        btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        if (backdrop) backdrop.classList.toggle('is-open', isOpen);
+        document.body.style.overflow = isOpen ? 'hidden' : '';
+      }
+
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        toggleNav();
+      });
+
+      if (backdrop) {
+        backdrop.addEventListener('click', function() {
+          toggleNav(false);
+        });
+      }
+
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && nav.classList.contains('is-open')) {
+          toggleNav(false);
+        }
+      });
+
+      window.addEventListener('resize', function() {
+        if (window.innerWidth > 768 && nav.classList.contains('is-open')) {
+          toggleNav(false);
+        }
+      });
+    })();
   </script>
 </body>
 </html>

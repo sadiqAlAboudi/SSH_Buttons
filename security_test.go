@@ -332,10 +332,53 @@ func TestDocsEndpoint(t *testing.T) {
 		t.Fatalf("Expected 200 OK for Arabic /docs, got %d", rrAR.Code)
 	}
 	bodyAR := rrAR.Body.String()
-	if !strings.Contains(bodyAR, `dir="rtl"`) || !strings.Contains(bodyAR, "دليل الإعداد والتوثيق") {
-		t.Errorf("Expected RTL and Arabic title in docs response, got body snippet: %s", bodyAR[:300])
+	if !strings.Contains(bodyAR, `dir="rtl"`) || !strings.Contains(bodyAR, "دليل الاستخدام وتهيئة النظام") {
+		t.Errorf("Expected RTL and refined Arabic title in docs response, got body snippet: %s", bodyAR[:300])
 	}
-	if !strings.Contains(bodyAR, "الأجهزة البعيدة") {
-		t.Errorf("Expected Arabic section headers in docs response")
+	if !strings.Contains(bodyAR, "الخوادم وأجهزة الشبكة") {
+		t.Errorf("Expected refined Arabic section headers in docs response")
+	}
+	// Verify that code snippets strictly maintain LTR direction
+	if !strings.Contains(bodyAR, "direction: ltr !important") {
+		t.Errorf("Expected docs template to enforce LTR direction on code blocks")
+	}
+}
+
+func TestResponsiveHamburgerMenu(t *testing.T) {
+	server, _, _ := setupTestServer(t)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	sessionToken := server.auth.GenerateSessionToken("admin")
+
+	endpoints := []string{"/", "/config", "/docs"}
+
+	for _, endpoint := range endpoints {
+		t.Run(endpoint, func(t *testing.T) {
+			req := httptest.NewRequest("GET", endpoint, nil)
+			req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
+			rr := httptest.NewRecorder()
+			mux.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("Expected 200 OK for %s, got %d", endpoint, rr.Code)
+			}
+
+			body := rr.Body.String()
+			requiredElements := []string{
+				`id="hamburgerBtn"`,
+				`class="btn-hamburger"`,
+				`id="headerActions"`,
+				`id="navBackdrop"`,
+				`class="nav-backdrop"`,
+				`@media (max-width: 768px)`,
+			}
+
+			for _, elem := range requiredElements {
+				if !strings.Contains(body, elem) {
+					t.Errorf("Endpoint %s missing expected responsive menu element: %s", endpoint, elem)
+				}
+			}
+		})
 	}
 }

@@ -69,7 +69,7 @@
       border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
-      z-index: 40;
+      z-index: 50;
       padding: 0 1rem;
       min-height: 52px;
       display: flex;
@@ -134,6 +134,112 @@
     }
     .btn-header:active {
       transform: translateY(1px);
+    }
+
+    /* Hamburger Menu Button */
+    .btn-hamburger {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+      flex-shrink: 0;
+    }
+    .btn-hamburger:hover {
+      color: var(--text);
+      border-color: var(--border-hover);
+      background: var(--surface-elevated);
+    }
+    .btn-hamburger:active {
+      transform: translateY(1px);
+    }
+    .btn-hamburger .icon-close {
+      display: none;
+    }
+    .btn-hamburger[aria-expanded="true"] .icon-menu {
+      display: none;
+    }
+    .btn-hamburger[aria-expanded="true"] .icon-close {
+      display: block;
+    }
+
+    /* Mobile Backdrop */
+    .nav-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      z-index: 45;
+    }
+    .nav-backdrop.is-open {
+      display: block;
+    }
+
+    @media (max-width: 768px) {
+      .btn-hamburger {
+        display: inline-flex;
+      }
+      .header-actions {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.65);
+        flex-direction: column;
+        padding: 0.75rem 1rem 1rem 1rem;
+        gap: 0.5rem;
+        z-index: 50;
+      }
+      .header-actions.is-open {
+        display: flex;
+        animation: navSlideDown 0.18s ease-out;
+      }
+      .header-actions .btn-header {
+        width: 100%;
+        justify-content: flex-start;
+        padding: 0.65rem 0.85rem;
+        font-size: 0.875rem;
+        min-height: 44px;
+      }
+      .header-actions form {
+        width: 100%;
+        display: block !important;
+      }
+      .header-actions form .btn-header {
+        width: 100%;
+      }
+    }
+    @keyframes navSlideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 480px) {
+      .brand-title {
+        font-size: 0.95rem;
+        max-width: 220px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
     }
 
     /* Main Container */
@@ -350,8 +456,9 @@
       overflow: hidden;
       text-overflow: ellipsis;
       display: block;
-      direction: ltr;
-      text-align: left;
+      direction: ltr !important;
+      text-align: left !important;
+      unicode-bidi: isolate;
     }
 
     /* Physical Tactile Switch Buttons */
@@ -569,7 +676,20 @@
         <span class="brand-title">{{.T.app_title}}</span>
       </a>
 
-      <div class="header-actions">
+      <!-- Mobile Hamburger Button -->
+      <button type="button" class="btn-hamburger" id="hamburgerBtn" aria-label="{{.T.menu}}" aria-expanded="false" aria-controls="headerActions">
+        <svg class="icon-menu" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+        <svg class="icon-close" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      <div class="header-actions" id="headerActions">
         <!-- Language Switcher -->
         <a href="/set-lang?lang={{.OtherLang}}" class="btn-header" title="{{.T.language}}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -624,6 +744,7 @@
       </div>
     </div>
   </header>
+  <div class="nav-backdrop" id="navBackdrop"></div>
 
   <main class="container">
     {{if .Flash}}
@@ -734,8 +855,8 @@
     <p class="dlg-text">
       {{.T.confirm_message}}
       <div class="dlg-box">
-        <div><strong>{{.T.host}}:</strong> <span id="dialogHost"></span></div>
-        <div style="margin-top: 0.35rem;"><strong>{{.T.command}}:</strong> <span id="dialogCmd"></span></div>
+        <div><strong>{{.T.host}}:</strong> <span id="dialogHost" style="direction: ltr; display: inline-block;"></span></div>
+        <div style="margin-top: 0.35rem;"><strong>{{.T.command}}:</strong> <code id="dialogCmd" style="direction: ltr; display: inline-block; background: var(--surface-inset); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.8125rem;"></code></div>
       </div>
     </p>
     <div class="dlg-btns">
@@ -792,6 +913,46 @@
         dialog.close();
       }
     });
+
+    // Mobile Hamburger Navigation
+    (function() {
+      const btn = document.getElementById('hamburgerBtn');
+      const nav = document.getElementById('headerActions');
+      const backdrop = document.getElementById('navBackdrop');
+
+      if (!btn || !nav) return;
+
+      function toggleNav(open) {
+        const isOpen = open !== undefined ? open : !nav.classList.contains('is-open');
+        nav.classList.toggle('is-open', isOpen);
+        btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        if (backdrop) backdrop.classList.toggle('is-open', isOpen);
+        document.body.style.overflow = isOpen ? 'hidden' : '';
+      }
+
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        toggleNav();
+      });
+
+      if (backdrop) {
+        backdrop.addEventListener('click', function() {
+          toggleNav(false);
+        });
+      }
+
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && nav.classList.contains('is-open')) {
+          toggleNav(false);
+        }
+      });
+
+      window.addEventListener('resize', function() {
+        if (window.innerWidth > 768 && nav.classList.contains('is-open')) {
+          toggleNav(false);
+        }
+      });
+    })();
   </script>
 </body>
 </html>
