@@ -187,7 +187,7 @@ func (a *AuthService) ValidateSessionToken(token string) (string, bool) {
 	}
 
 	expectedMac := hmac.New(sha256.New, []byte(cfg.Server.SessionSecret))
-	expectedMac.Write([]byte(fmt.Sprintf("%s:%s", username, expiresAtStr)))
+	expectedMac.Write(fmt.Appendf(nil, "%s:%s", username, expiresAtStr))
 	expectedSig := expectedMac.Sum(nil)
 
 	actualSig, err := base64.RawURLEncoding.DecodeString(sigBase64)
@@ -252,7 +252,7 @@ func (a *AuthService) ValidateCSRFToken(username, token string) bool {
 
 	cfg := a.configMgr.Get()
 	mac := hmac.New(sha256.New, []byte(cfg.Server.SessionSecret))
-	mac.Write([]byte(fmt.Sprintf("csrf:%s:%s", username, epochStr)))
+	mac.Write(fmt.Appendf(nil, "csrf:%s:%s", username, epochStr))
 	expectedSig := mac.Sum(nil)
 
 	actualSig, err := base64.RawURLEncoding.DecodeString(sigBase64)

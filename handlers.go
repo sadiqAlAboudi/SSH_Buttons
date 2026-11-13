@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -68,6 +69,7 @@ type Server struct {
 	loginTmpl     *template.Template
 	dashboardTmpl *template.Template
 	configTmpl    *template.Template
+	docsTmpl      *template.Template
 }
 
 func NewServer(cm *ConfigManager) (*Server, error) {
@@ -86,6 +88,11 @@ func NewServer(cm *ConfigManager) (*Server, error) {
 		return nil, fmt.Errorf("failed to parse config template: %w", err)
 	}
 
+	docsTmpl, err := template.ParseFS(templateFS, "templates/docs.html")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse docs template: %w", err)
+	}
+
 	auth := NewAuthService(cm)
 	runner := NewSSHRunner(cm)
 	store := NewFlashStore()
@@ -100,6 +107,7 @@ func NewServer(cm *ConfigManager) (*Server, error) {
 		loginTmpl:     loginTmpl,
 		dashboardTmpl: dashboardTmpl,
 		configTmpl:    configTmpl,
+		docsTmpl:      docsTmpl,
 	}, nil
 }
 
@@ -114,6 +122,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Language switcher
 	mux.HandleFunc("GET /set-lang", s.handleSetLang)
+
+	// Documentation
+	mux.HandleFunc("GET /docs", s.auth.RequireAuth(s.handleDocs))
 
 	// Auth routes
 	mux.HandleFunc("GET /login", s.handleLogin)
@@ -146,6 +157,37 @@ func (s *Server) handleSetLang(w http.ResponseWriter, r *http.Request) {
 		redirectURL = "/"
 	}
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+}
+
+func (s *Server) handleDocs(w http.ResponseWriter, r *http.Request) {
+	lang := s.i18n.ResolveLanguage(r)
+	otherLang, otherLabel := GetOtherLang(lang)
+
+	exampleContent, err := os.ReadFile("config.example.yml")
+	var exampleYAML string
+	if err == nil {
+		exampleYAML = string(exampleContent)
+	} else if raw, readErr := s.configMgr.ReadRawConfigFile(); readErr == nil {
+		exampleYAML = raw
+	}
+
+	data := struct {
+		Lang        string
+		Dir         string
+		OtherLang   string
+		OtherLabel  string
+		ExampleYAML string
+		T           map[string]string
+	}{
+		Lang:        lang,
+		Dir:         GetDir(lang),
+		OtherLang:  otherLang,
+		OtherLabel:  otherLabel,
+		ExampleYAML: exampleYAML,
+		T:           s.i18n.GetTranslations(lang),
+	}
+
+	_ = s.docsTmpl.Execute(w, data)
 }
 
 func (s *Server) getSessionUser(r *http.Request) string {

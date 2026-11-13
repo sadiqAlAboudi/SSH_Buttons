@@ -289,3 +289,53 @@ func TestHandlers_MaxBodySizeCap(t *testing.T) {
 		t.Errorf("Expected 400 Bad Request when exceeding 1MB body limit, got %d", rr.Code)
 	}
 }
+
+func TestDocsEndpoint(t *testing.T) {
+	server, _, _ := setupTestServer(t)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	// 1. Unauthenticated request to /docs should redirect to /login
+	reqUnauth := httptest.NewRequest("GET", "/docs", nil)
+	rrUnauth := httptest.NewRecorder()
+	mux.ServeHTTP(rrUnauth, reqUnauth)
+	if rrUnauth.Code != http.StatusSeeOther || rrUnauth.Header().Get("Location") != "/login" {
+		t.Errorf("Expected 303 redirect to /login, got code=%d location=%s", rrUnauth.Code, rrUnauth.Header().Get("Location"))
+	}
+
+	sessionToken := server.auth.GenerateSessionToken("admin")
+
+	// 2. Authenticated English request
+	reqEN := httptest.NewRequest("GET", "/docs", nil)
+	reqEN.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
+	reqEN.AddCookie(&http.Cookie{Name: langCookieName, Value: "en"})
+	rrEN := httptest.NewRecorder()
+	mux.ServeHTTP(rrEN, reqEN)
+	if rrEN.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /docs, got %d", rrEN.Code)
+	}
+	bodyEN := rrEN.Body.String()
+	if !strings.Contains(bodyEN, `dir="ltr"`) || !strings.Contains(bodyEN, "Documentation &amp; Manual") && !strings.Contains(bodyEN, "Documentation & Manual") {
+		t.Errorf("Expected LTR and English title in docs response, got body snippet: %s", bodyEN[:300])
+	}
+	if !strings.Contains(bodyEN, "Cisco Switch") || !strings.Contains(bodyEN, "MikroTik Gateway") {
+		t.Errorf("Expected vendor recipes in English docs")
+	}
+
+	// 3. Authenticated Arabic request
+	reqAR := httptest.NewRequest("GET", "/docs", nil)
+	reqAR.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
+	reqAR.AddCookie(&http.Cookie{Name: langCookieName, Value: "ar"})
+	rrAR := httptest.NewRecorder()
+	mux.ServeHTTP(rrAR, reqAR)
+	if rrAR.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for Arabic /docs, got %d", rrAR.Code)
+	}
+	bodyAR := rrAR.Body.String()
+	if !strings.Contains(bodyAR, `dir="rtl"`) || !strings.Contains(bodyAR, "دليل الإعداد والتوثيق") {
+		t.Errorf("Expected RTL and Arabic title in docs response, got body snippet: %s", bodyAR[:300])
+	}
+	if !strings.Contains(bodyAR, "الأجهزة البعيدة") {
+		t.Errorf("Expected Arabic section headers in docs response")
+	}
+}
