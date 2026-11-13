@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,9 +20,9 @@ type UserConfig struct {
 }
 
 type ServerConfig struct {
-	Port          int    `yaml:"port"`
-	SessionSecret string `yaml:"session_secret"`
-	Timeout       int    `yaml:"timeout"`
+	Port          int    `yaml:"port,omitempty"`
+	SessionSecret string `yaml:"session_secret,omitempty"`
+	Timeout       int    `yaml:"timeout,omitempty"`
 }
 
 type HostConfig struct {
@@ -135,7 +136,7 @@ func (cm *ConfigManager) SaveConfigFile(content []byte) error {
 	}
 	if err := f.Sync(); err != nil {
 		f.Close()
-		return fmt.Errorf("failed to sync config file: %w", err)
+		return fmt.Errorf("failed to sync config file to disk: %w", err)
 	}
 	f.Close()
 
@@ -194,14 +195,27 @@ type rawCategory struct {
 }
 
 type rawRoot struct {
-	Server     ServerConfig        `yaml:"server"`
-	Users      []rawUser           `yaml:"users"`
-	Hosts      map[string]rawHost  `yaml:"hosts"`
-	Categories []rawCategory       `yaml:"categories"`
-	Buttons    []rawButton         `yaml:"buttons"` // optional top-level buttons
+	Server     ServerConfig       `yaml:"server,omitempty"`
+	Users      []rawUser          `yaml:"users"`
+	Hosts      map[string]rawHost `yaml:"hosts"`
+	Categories []rawCategory      `yaml:"categories"`
+	Buttons    []rawButton        `yaml:"buttons"` // optional top-level buttons
 }
 
 func loadConfigFromFile(path string) (*AppConfig, error) {
+	// Auto-initialize from config.example.yml if target config does not exist
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		examplePath := filepath.Join(filepath.Dir(path), "config.example.yml")
+		if _, exErr := os.Stat(examplePath); os.IsNotExist(exErr) {
+			examplePath = "config.example.yml"
+		}
+		if exData, readErr := os.ReadFile(examplePath); readErr == nil {
+			if writeErr := os.WriteFile(path, exData, 0644); writeErr == nil {
+				log.Printf("[INFO] %s not found; automatically initialized from %s", path, examplePath)
+			}
+		}
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
@@ -212,26 +226,37 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 		return nil, fmt.Errorf("failed to parse yaml config: %w", err)
 	}
 
-	// 1. Server settings & defaults
-	server := raw.Server
-	if server.Port == 0 {
-		server.Port = 8080
-	}
-	if server.SessionSecret == "" {
-		server.SessionSecret = "ssh-buttons-session-key-change-me"
-	}
-	if server.Timeout <= 0 {
-		server.Timeout = 15
+	// 1. Server settings: driven primarily by environment variables
+	server := ServerConfig{
+		Port:          8080,
+		SessionSecret: "ssh-buttons-session-key-change-me",
+		Timeout:       15,
 	}
 
-	// Environment variable overrides
 	if envPort := os.Getenv("PORT"); envPort != "" {
 		if p, err := strconv.Atoi(envPort); err == nil && p > 0 {
 			server.Port = p
 		}
+	} else if raw.Server.Port > 0 {
+		server.Port = raw.Server.Port
 	}
+
 	if envSecret := os.Getenv("SESSION_SECRET"); envSecret != "" {
 		server.SessionSecret = envSecret
+	} else if raw.Server.SessionSecret != "" {
+		server.SessionSecret = raw.Server.SessionSecret
+	}
+
+	if envTimeout := os.Getenv("TIMEOUT"); envTimeout != "" {
+		if t, err := strconv.Atoi(envTimeout); err == nil && t > 0 {
+			server.Timeout = t
+		}
+	} else if envTimeout := os.Getenv("SSH_TIMEOUT"); envTimeout != "" {
+		if t, err := strconv.Atoi(envTimeout); err == nil && t > 0 {
+			server.Timeout = t
+		}
+	} else if raw.Server.Timeout > 0 {
+		server.Timeout = raw.Server.Timeout
 	}
 
 	// 2. Process Users

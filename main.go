@@ -14,6 +14,7 @@ import (
 
 func main() {
 	configPathFlag := flag.String("config", "config.yml", "Path to YAML configuration file")
+	portFlag := flag.Int("port", 0, "HTTP listen port (overrides default 8080)")
 	flag.Parse()
 
 	configPath := *configPathFlag
@@ -28,6 +29,9 @@ func main() {
 	}
 
 	cfg := configMgr.Get()
+	if *portFlag > 0 {
+		cfg.Server.Port = *portFlag
+	}
 	log.Printf("[INFO] Config loaded successfully: %d hosts, %d buttons configured", len(cfg.Hosts), len(cfg.ButtonsByID))
 
 	server, err := NewServer(configMgr)

@@ -8,11 +8,8 @@ import (
 )
 
 func TestConfigCleanSchemaAndDefaults(t *testing.T) {
+	// Notice: NO server: block in YAML! Server is configured via environment.
 	yamlContent := `
-server:
-  port: 9090
-  timeout: 25
-
 users:
   - user: "testadmin"
     pass: "testpassword"
@@ -42,6 +39,9 @@ categories:
 		t.Fatalf("Failed to write temp config: %v", err)
 	}
 
+	t.Setenv("PORT", "9090")
+	t.Setenv("TIMEOUT", "25")
+
 	cm, err := NewConfigManager(configPath)
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
@@ -49,10 +49,10 @@ categories:
 
 	cfg := cm.Get()
 	if cfg.Server.Port != 9090 {
-		t.Errorf("Expected port 9090, got %d", cfg.Server.Port)
+		t.Errorf("Expected port 9090 from env, got %d", cfg.Server.Port)
 	}
 	if cfg.Server.Timeout != 25 {
-		t.Errorf("Expected timeout 25, got %d", cfg.Server.Timeout)
+		t.Errorf("Expected timeout 25 from env, got %d", cfg.Server.Timeout)
 	}
 
 	// Verify User
@@ -92,11 +92,39 @@ categories:
 	}
 }
 
+func TestConfigAutoInitialization(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+	examplePath := filepath.Join(tmpDir, "config.example.yml")
+
+	exampleContent := `
+users:
+  - user: "auto_admin"
+    pass: "autopass"
+`
+	if err := os.WriteFile(examplePath, []byte(exampleContent), 0644); err != nil {
+		t.Fatalf("Failed to create example file: %v", err)
+	}
+
+	// config.yml does not exist yet!
+	cm, err := NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("Failed to auto-init config: %v", err)
+	}
+
+	// Verify config.yml was created
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Fatal("Expected config.yml to be automatically created from config.example.yml")
+	}
+
+	cfg := cm.Get()
+	if _, ok := cfg.UsersByUsername["auto_admin"]; !ok {
+		t.Errorf("Expected auto_admin user loaded from auto-copied config, got %+v", cfg.UsersByUsername)
+	}
+}
+
 func TestConfigMultiUsers(t *testing.T) {
 	yamlContent := `
-server:
-  port: 8080
-
 users:
   - user: "chief"
     pass: "chiefpassword"
@@ -130,9 +158,6 @@ users:
 
 func TestConfigSaveAndValidate(t *testing.T) {
 	yamlContent := `
-server:
-  port: 8080
-
 users:
   - user: "admin"
     pass: "adminpassword"
@@ -150,8 +175,7 @@ users:
 
 	// 1. Invalid YAML should fail and not alter file
 	invalidYAML := `
-server:
-  port: [unclosed bracket
+users: [unclosed bracket
 `
 	err = cm.SaveConfigFile([]byte(invalidYAML))
 	if err == nil {
@@ -165,9 +189,6 @@ server:
 
 	// 2. Valid YAML should save, backup, and reload
 	validYAML := `
-server:
-  port: 9999
-
 users:
   - user: "superadmin"
     pass: "superpassword"
@@ -184,45 +205,8 @@ users:
 
 	// Check memory was reloaded
 	cfg := cm.Get()
-	if cfg.Server.Port != 9999 {
-		t.Errorf("Expected reloaded port 9999, got %d", cfg.Server.Port)
-	}
 	super, ok := cfg.UsersByUsername["superadmin"]
 	if !ok || super.Password != "superpassword" {
 		t.Errorf("Expected reloaded user superadmin, got %v", super)
-	}
-}
-
-func TestConfigEnvOverrides(t *testing.T) {
-	yamlContent := `
-server:
-  port: 8080
-
-users:
-  - user: "original"
-    pass: "old"
-`
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.yml")
-	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
-		t.Fatalf("Failed to write temp config: %v", err)
-	}
-
-	t.Setenv("PORT", "7777")
-	t.Setenv("ADMIN_USER", "envadmin")
-	t.Setenv("ADMIN_PASSWORD", "newsecret")
-
-	cm, err := NewConfigManager(configPath)
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
-
-	cfg := cm.Get()
-	if cfg.Server.Port != 7777 {
-		t.Errorf("Expected port 7777 from env, got %d", cfg.Server.Port)
-	}
-	envUser, ok := cfg.UsersByUsername["envadmin"]
-	if !ok || envUser.Password != "newsecret" {
-		t.Errorf("Expected env user envadmin with newsecret, got %v", envUser)
 	}
 }

@@ -33,24 +33,20 @@ A lightweight, self-contained, Docker Compose-ready web dashboard in Go that act
    cd ssh_buttons
    ```
 
-2. Copy the example configuration:
-   ```bash
-   cp config.example.yml config.yml
-   ```
-
-3. (Optional) Place any SSH private keys into a `./keys` folder:
+2. (Optional) Place any SSH private keys into a `./keys` folder:
    ```bash
    mkdir -p keys
    cp ~/.ssh/id_ed25519 keys/
    chmod 600 keys/*
    ```
 
-4. Start the container:
+3. Start the container:
    ```bash
    docker compose up -d
    ```
+   > **Note**: `docker-compose.yml` automatically initializes `config.yml` from `config.example.yml` on first run if it does not already exist.
 
-5. Open your browser at **`http://localhost:8080`**.
+4. Open your browser or reverse proxy at **`http://localhost:8080`**.
    - Default Username: `admin`
    - Default Password: `adminpassword`
 
@@ -64,25 +60,19 @@ If you have Go installed on your machine:
 # Clone and enter directory
 cd SSH_Buttons
 
-# Copy sample configuration
-cp config.example.yml config.yml
-
-# Run directly
-go run . -config config.yml
+# Run directly (automatically initializes config.yml if missing)
+go run .
 ```
 
 ---
 
 ## ⚙️ Configuration (`config.yml`)
 
-The dashboard is driven by a single YAML file:
+Server infrastructure settings (`PORT`, `SESSION_SECRET`, and default `TIMEOUT`) are configured directly in `docker-compose.yml` environment variables.
+
+`config.yml` focuses purely on your users, hosts, and actionable buttons:
 
 ```yaml
-server:
-  port: 8080
-  session_secret: "a-very-secret-random-key"
-  timeout: 15 # Default command timeout in seconds
-
 users:
   - user: "admin"
     pass: "adminpassword" # Plaintext or $2a$... bcrypt hash
@@ -123,15 +113,40 @@ categories:
 
 ### Environment Variable Overrides
 
-Values can be overridden at runtime via environment variables:
+Server infrastructure is configured via environment variables:
 
-| Variable | Description |
-| :--- | :--- |
-| `PORT` | Listening port (default `8080`) |
-| `SESSION_SECRET` | HMAC cookie signing secret |
-| `ADMIN_USER` | Runtime override/injection for admin username |
-| `ADMIN_PASSWORD` | Runtime override/injection for admin password |
-| `CONFIG_PATH` | Path to configuration file (default `config.yml`) |
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `PORT` | HTTP port inside container | `8080` |
+| `SESSION_SECRET` | HMAC session cookie secret | Random default |
+| `TIMEOUT` | Default SSH command timeout in seconds | `15` |
+| `ADMIN_USER` | Runtime override/injection for admin username | *(optional)* |
+| `ADMIN_PASSWORD` | Runtime override/injection for admin password | *(optional)* |
+| `CONFIG_PATH` | Path to configuration file | `config.yml` |
+
+### 🔌 How to Change the Port
+
+- **Using Docker Compose (Environment Variable)**:
+  Set `PORT` in your `.env` file or directly on the command line:
+  ```bash
+  PORT=9090 docker compose up -d
+  ```
+  Both the container listener and the exposed port automatically adapt to `9090`.
+
+- **Direct Host Port Mapping (without Reverse Proxy)**:
+  If not using a reverse proxy, uncomment `ports:` in `docker-compose.yml`:
+  ```yaml
+  ports:
+    - "9090:8080" # Opens http://localhost:9090 on host, routes to container 8080
+  ```
+
+- **Running Locally / Bare Metal**:
+  Pass the `-port` flag or set `PORT`:
+  ```bash
+  ./ssh_buttons -port 9090
+  # or
+  PORT=9090 go run .
+  ```
 
 ---
 

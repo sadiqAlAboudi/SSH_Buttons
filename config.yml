@@ -1,49 +1,113 @@
-# SSH Buttons Configuration
-server:
-  port: 8080
-  session_secret: "change-this-to-a-secure-random-string"
-  timeout: 15
+# ==============================================================================
+# SSH_BUTTONS CONFIGURATION MANUAL & EXAMPLE (`config.yml`)
+# ==============================================================================
+#
+# NOTE: Server parameters (Port, Session Secret, and Global SSH Timeout) are
+# configured via environment variables in `docker-compose.yml`, NOT in this file:
+#   - PORT=8080
+#   - SESSION_SECRET=change-this-to-a-secure-random-key-in-production
+#   - TIMEOUT=15
+#
+# This file defines your users, target hosts, categories, and actionable buttons.
+# ==============================================================================
 
+# ------------------------------------------------------------------------------
+# 1. USER ACCOUNTS & ROLE-BASED ACCESS CONTROL (RBAC)
+# ------------------------------------------------------------------------------
+# Roles:
+#   - admin:    Can trigger actions, reload configs, and edit config.yml in the WebUI.
+#   - operator: Can view dashboard and trigger action buttons only.
+#
+# Passwords support:
+#   - Plaintext (e.g. "mySecretPass")
+#   - Bcrypt hashes (e.g. "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
 users:
   - user: "admin"
     pass: "adminpassword"
     role: "admin"
+
   - user: "operator1"
     pass: "operatorpassword"
     role: "operator"
 
+# ------------------------------------------------------------------------------
+# 2. REMOTE HOST DEFINITIONS
+# ------------------------------------------------------------------------------
+# Define reusable machines and network devices.
+#
+# Available fields per host:
+#   - name:     (Optional) Friendly display name. Defaults to the map key.
+#   - host:     (Required) IP address or hostname of the remote machine.
+#   - port:     (Optional) SSH port. Defaults to 22.
+#   - user:     (Required) Remote SSH login username.
+#   - key:      (Optional) Path to private key file. Relative paths resolve
+#               relative to this config file (e.g. "./keys/id_ed25519").
+#   - pass:     (Optional) SSH login password (used if key is absent or as fallback).
+#   - insecure: (Optional) Set false to enforce known_hosts verification.
+#               Defaults to true for internal subnets and homelabs.
 hosts:
+  # Example A: Ubuntu / Debian Linux Server with SSH Private Key
   srv_linux:
     name: "Ubuntu Production 01"
     host: "192.168.1.10"
     user: "root"
     key: "./keys/id_ed25519"
 
+  # Example B: MikroTik RouterOS with Password
   router_mikrotik:
     name: "Core Gateway"
     host: "192.168.1.1"
     user: "admin"
     pass: "RouterPassword"
 
+  # Example C: Cisco / Edge Network Switch with Password
   switch_cisco:
     name: "Access Switch 24P"
     host: "192.168.1.2"
     user: "cisco"
     pass: "CiscoEnablePassword"
 
+# ------------------------------------------------------------------------------
+# 3. CATEGORIES & BUTTONS
+# ------------------------------------------------------------------------------
+# Group buttons visually by service, rack, or environment.
+#
+# CATEGORY-LEVEL INHERITANCE:
+#   Setting `host: srv_linux` on a category automatically cascades that host
+#   to every button inside it, eliminating the need to repeat `host:` on each item.
+#
+# BUTTON FIELDS:
+#   - name:     (Required) Label displayed on the button.
+#   - cmd:      (Required) Shell command executed over SSH on the target host.
+#   - host:     (Optional) Overrides category host for this specific button.
+#   - timeout:  (Optional) Execution timeout in seconds. Defaults to server timeout (15s).
+#   - id:       (Optional) Unique button identifier. If omitted, a clean slug
+#               is auto-generated from category and button names (e.g. "linux-ops-reboot").
+#
+# SHORTHAND MODIFIERS & STYLES:
+#   - danger:  true   -> Applies red styling and enforces a confirmation dialog before running.
+#   - warning: true   -> Applies amber styling and enforces a confirmation dialog before running.
+#   - confirm: true   -> Enforces a confirmation dialog with default primary styling.
+#   - style:   "..."  -> Explicit button color: primary (default), secondary, success, warning, danger.
 categories:
   - name: "Linux Operations"
-    host: "srv_linux" # Inherited by all buttons in this category
+    host: "srv_linux" # All buttons below run on srv_linux by default
     buttons:
       - name: "Restart Docker"
         cmd: "systemctl restart docker"
-        warning: true # sets warning style + confirmation prompt
+        warning: true # Auto-configures amber style + confirmation modal
         timeout: 30
+
       - name: "Check Disk Space"
-        cmd: "df -h"
+        cmd: "df -h" # Inherits srv_linux, runs with no confirmation prompt
+
+      - name: "Check Memory Usage"
+        cmd: "free -m"
+
       - name: "Reboot Server"
         cmd: "sudo reboot"
-        danger: true # sets danger style + confirmation prompt
+        danger: true # Auto-configures crimson style + confirmation modal
+
       - name: "Power Off Server"
         cmd: "sudo shutdown -h now"
         danger: true
@@ -51,17 +115,20 @@ categories:
   - name: "Network Gear"
     buttons:
       - name: "Reboot MikroTik"
-        host: "router_mikrotik"
+        host: "router_mikrotik" # Explicit host override
         cmd: "/system reboot"
         danger: true
+
       - name: "Backup MikroTik"
         host: "router_mikrotik"
         cmd: "/system backup save name=auto-backup"
         style: "success"
+
       - name: "Save Cisco Config"
         host: "switch_cisco"
         cmd: "write memory"
         style: "success"
+
       - name: "Reload Switch"
         host: "switch_cisco"
         cmd: "reload"

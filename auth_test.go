@@ -17,10 +17,9 @@ func TestAuthCredentialsAndTokens(t *testing.T) {
 		t.Fatalf("Failed to generate bcrypt: %v", err)
 	}
 
-	yamlContent := `
-server:
-  session_secret: "super-secret-signing-key"
+	t.Setenv("SESSION_SECRET", "super-secret-signing-key")
 
+	yamlContent := `
 users:
   - user: "sysadmin"
     pass: "` + string(hashed) + `"
