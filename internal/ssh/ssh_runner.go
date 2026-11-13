@@ -1,4 +1,4 @@
-package main
+package ssh
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"ssh_buttons/internal/config"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -31,15 +33,15 @@ type ExecutionResult struct {
 }
 
 type SSHRunner struct {
-	configMgr *ConfigManager
+	configMgr *config.ConfigManager
 }
 
-func NewSSHRunner(cm *ConfigManager) *SSHRunner {
+func NewSSHRunner(cm *config.ConfigManager) *SSHRunner {
 	return &SSHRunner{configMgr: cm}
 }
 
 // Execute runs the button's command on its target host
-func (r *SSHRunner) Execute(ctx context.Context, btn ButtonConfig) *ExecutionResult {
+func (r *SSHRunner) Execute(ctx context.Context, btn config.ButtonConfig) *ExecutionResult {
 	start := time.Now()
 	res := &ExecutionResult{
 		ButtonID:    btn.ID,
@@ -184,7 +186,7 @@ func (r *SSHRunner) Execute(ctx context.Context, btn ButtonConfig) *ExecutionRes
 }
 
 // executePTY runs commands in an interactive pseudo-terminal shell session (required by Cisco IOS and switches)
-func (r *SSHRunner) executePTY(ctx context.Context, client *ssh.Client, btn ButtonConfig, host HostConfig, start time.Time) *ExecutionResult {
+func (r *SSHRunner) executePTY(ctx context.Context, client *ssh.Client, btn config.ButtonConfig, host config.HostConfig, start time.Time) *ExecutionResult {
 	res := &ExecutionResult{
 		ButtonID:    btn.ID,
 		ButtonLabel: btn.Label,
@@ -327,7 +329,7 @@ func (r *SSHRunner) executePTY(ctx context.Context, client *ssh.Client, btn Butt
 	}
 }
 
-func buildSSHClientConfig(host HostConfig, timeout time.Duration) (*ssh.ClientConfig, error) {
+func buildSSHClientConfig(host config.HostConfig, timeout time.Duration) (*ssh.ClientConfig, error) {
 	var authMethods []ssh.AuthMethod
 
 	// Private key authentication

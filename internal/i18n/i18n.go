@@ -1,4 +1,4 @@
-package main
+package i18n
 
 import (
 	"net/http"
@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	langCookieName = "ssh_buttons_lang"
+	LangCookieName = "ssh_buttons_lang"
 	LangEN         = "en"
 	LangAR         = "ar"
 )
@@ -138,7 +138,7 @@ func NewI18nManager() *I18nManager {
 
 // ResolveLanguage returns "ar" or "en" based on cookie, header, or default
 func (m *I18nManager) ResolveLanguage(r *http.Request) string {
-	if cookie, err := r.Cookie(langCookieName); err == nil {
+	if cookie, err := r.Cookie(LangCookieName); err == nil {
 		lang := strings.ToLower(strings.TrimSpace(cookie.Value))
 		if lang == LangAR || lang == LangEN {
 			return lang

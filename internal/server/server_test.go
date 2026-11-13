@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bytes"
@@ -10,9 +10,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"ssh_buttons/internal/auth"
+	"ssh_buttons/internal/config"
+	"ssh_buttons/internal/i18n"
 )
 
-func setupTestServer(t *testing.T) (*Server, *ConfigManager, string) {
+func setupTestServer(t *testing.T) (*Server, *config.ConfigManager, string) {
 	t.Helper()
 	yamlContent := `
 users:
@@ -43,9 +47,9 @@ categories:
 		t.Fatalf("Failed to write config: %v", err)
 	}
 
-	cm, err := NewConfigManager(configPath)
+	cm, err := config.NewConfigManager(configPath)
 	if err != nil {
-		t.Fatalf("Failed to initialize ConfigManager: %v", err)
+		t.Fatalf("Failed to initialize config.ConfigManager: %v", err)
 	}
 
 	server, err := NewServer(cm)
@@ -58,39 +62,39 @@ categories:
 
 func TestCSRFTokenGenerationAndValidation(t *testing.T) {
 	_, cm, _ := setupTestServer(t)
-	auth := NewAuthService(cm)
+	authSvc := auth.NewAuthService(cm)
 
 	userA := "admin"
 	userB := "operator"
 
-	tokenA := auth.GenerateCSRFToken(userA)
+	tokenA := authSvc.GenerateCSRFToken(userA)
 	if tokenA == "" {
 		t.Fatal("Expected non-empty CSRF token")
 	}
 
 	// 1. Valid token for userA
-	if !auth.ValidateCSRFToken(userA, tokenA) {
+	if !authSvc.ValidateCSRFToken(userA, tokenA) {
 		t.Errorf("ValidateCSRFToken failed for valid user and token")
 	}
 
 	// 2. Token from userA should NOT validate for userB (prevents cross-user CSRF)
-	if auth.ValidateCSRFToken(userB, tokenA) {
+	if authSvc.ValidateCSRFToken(userB, tokenA) {
 		t.Errorf("ValidateCSRFToken allowed token from userA to be used by userB")
 	}
 
 	// 3. Tampered token
-	if auth.ValidateCSRFToken(userA, tokenA+"tampered") {
+	if authSvc.ValidateCSRFToken(userA, tokenA+"tampered") {
 		t.Errorf("ValidateCSRFToken accepted tampered token")
 	}
 
 	// 4. Empty token or empty user
-	if auth.ValidateCSRFToken("", tokenA) || auth.ValidateCSRFToken(userA, "") {
+	if authSvc.ValidateCSRFToken("", tokenA) || authSvc.ValidateCSRFToken(userA, "") {
 		t.Errorf("ValidateCSRFToken accepted empty user or empty token")
 	}
 }
 
 func TestLoginRateLimiter(t *testing.T) {
-	limiter := NewLoginRateLimiter(5, 1*time.Minute)
+	limiter := auth.NewLoginRateLimiter(5, 1*time.Minute)
 	ip := "192.168.1.50"
 
 	// First 5 attempts should be allowed
@@ -194,7 +198,7 @@ func TestHandlers_CSRFEnforcementOnPostEndpoints(t *testing.T) {
 
 			reqNoCSRF := httptest.NewRequest("POST", ep.path, strings.NewReader(noCsrfData.Encode()))
 			reqNoCSRF.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			reqNoCSRF.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
+			reqNoCSRF.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
 			rrNoCSRF := httptest.NewRecorder()
 
 			mux.ServeHTTP(rrNoCSRF, reqNoCSRF)
@@ -211,7 +215,7 @@ func TestHandlers_CSRFEnforcementOnPostEndpoints(t *testing.T) {
 
 			reqWithCSRF := httptest.NewRequest("POST", ep.path, strings.NewReader(withCsrfData.Encode()))
 			reqWithCSRF.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			reqWithCSRF.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
+			reqWithCSRF.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
 			rrWithCSRF := httptest.NewRecorder()
 
 			mux.ServeHTTP(rrWithCSRF, reqWithCSRF)
@@ -279,7 +283,7 @@ func TestHandlers_MaxBodySizeCap(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/config", bytes.NewReader([]byte(formData.Encode())))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
 	rr := httptest.NewRecorder()
 
 	mux.ServeHTTP(rr, req)
@@ -307,8 +311,8 @@ func TestDocsEndpoint(t *testing.T) {
 
 	// 2. Authenticated English request
 	reqEN := httptest.NewRequest("GET", "/docs", nil)
-	reqEN.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
-	reqEN.AddCookie(&http.Cookie{Name: langCookieName, Value: "en"})
+	reqEN.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	reqEN.AddCookie(&http.Cookie{Name: i18n.LangCookieName, Value: "en"})
 	rrEN := httptest.NewRecorder()
 	mux.ServeHTTP(rrEN, reqEN)
 	if rrEN.Code != http.StatusOK {
@@ -324,8 +328,8 @@ func TestDocsEndpoint(t *testing.T) {
 
 	// 3. Authenticated Arabic request
 	reqAR := httptest.NewRequest("GET", "/docs", nil)
-	reqAR.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
-	reqAR.AddCookie(&http.Cookie{Name: langCookieName, Value: "ar"})
+	reqAR.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	reqAR.AddCookie(&http.Cookie{Name: i18n.LangCookieName, Value: "ar"})
 	rrAR := httptest.NewRecorder()
 	mux.ServeHTTP(rrAR, reqAR)
 	if rrAR.Code != http.StatusOK {
@@ -338,9 +342,15 @@ func TestDocsEndpoint(t *testing.T) {
 	if !strings.Contains(bodyAR, "الخوادم وأجهزة الشبكة") {
 		t.Errorf("Expected refined Arabic section headers in docs response")
 	}
-	// Verify that code snippets strictly maintain LTR direction
-	if !strings.Contains(bodyAR, "direction: ltr !important") {
-		t.Errorf("Expected docs template to enforce LTR direction on code blocks")
+	// Verify that code snippets strictly maintain LTR direction via linked app.css
+	reqCSS := httptest.NewRequest("GET", "/static/app.css", nil)
+	rrCSS := httptest.NewRecorder()
+	mux.ServeHTTP(rrCSS, reqCSS)
+	if rrCSS.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /static/app.css, got %d", rrCSS.Code)
+	}
+	if !strings.Contains(rrCSS.Body.String(), "direction: ltr !important") {
+		t.Errorf("Expected app.css to enforce LTR direction on code blocks")
 	}
 }
 
@@ -356,7 +366,7 @@ func TestResponsiveHamburgerMenu(t *testing.T) {
 	for _, endpoint := range endpoints {
 		t.Run(endpoint, func(t *testing.T) {
 			req := httptest.NewRequest("GET", endpoint, nil)
-			req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
+			req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
 			rr := httptest.NewRecorder()
 			mux.ServeHTTP(rr, req)
 
@@ -371,7 +381,7 @@ func TestResponsiveHamburgerMenu(t *testing.T) {
 				`id="headerActions"`,
 				`id="navBackdrop"`,
 				`class="nav-backdrop"`,
-				`@media (max-width: 768px)`,
+				`/static/app.css`,
 			}
 
 			for _, elem := range requiredElements {
@@ -380,5 +390,19 @@ func TestResponsiveHamburgerMenu(t *testing.T) {
 				}
 			}
 		})
+	}
+
+	// Verify app.css contains the responsive media queries
+	reqCSS := httptest.NewRequest("GET", "/static/app.css", nil)
+	rrCSS := httptest.NewRecorder()
+	mux.ServeHTTP(rrCSS, reqCSS)
+	if rrCSS.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /static/app.css, got %d", rrCSS.Code)
+	}
+	if !strings.Contains(rrCSS.Header().Get("Content-Type"), "text/css") {
+		t.Errorf("Expected Content-Type text/css, got %s", rrCSS.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(rrCSS.Body.String(), "@media (max-width: 768px)") {
+		t.Errorf("Expected app.css to define @media (max-width: 768px)")
 	}
 }

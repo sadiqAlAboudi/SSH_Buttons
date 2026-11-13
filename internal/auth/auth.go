@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"crypto/hmac"
@@ -13,11 +13,13 @@ import (
 	"sync"
 	"time"
 
+	"ssh_buttons/internal/config"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
 const (
-	sessionCookieName = "ssh_buttons_session"
+	SessionCookieName = "ssh_buttons_session"
 	sessionDuration   = 24 * time.Hour
 )
 
@@ -71,11 +73,11 @@ func (l *LoginRateLimiter) RecordSuccess(ip string) {
 }
 
 type AuthService struct {
-	configMgr *ConfigManager
+	configMgr *config.ConfigManager
 	limiter   *LoginRateLimiter
 }
 
-func NewAuthService(cm *ConfigManager) *AuthService {
+func NewAuthService(cm *config.ConfigManager) *AuthService {
 	return &AuthService{
 		configMgr: cm,
 		limiter:   NewLoginRateLimiter(5, 1*time.Minute),
@@ -267,7 +269,7 @@ func (a *AuthService) SetSessionCookie(w http.ResponseWriter, r *http.Request, u
 	token := a.GenerateSessionToken(username)
 	isTLS := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
+		Name:     SessionCookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(sessionDuration.Seconds()),
@@ -279,7 +281,7 @@ func (a *AuthService) SetSessionCookie(w http.ResponseWriter, r *http.Request, u
 
 func (a *AuthService) ClearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
+		Name:     SessionCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -290,7 +292,7 @@ func (a *AuthService) ClearSessionCookie(w http.ResponseWriter) {
 
 func (a *AuthService) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(sessionCookieName)
+		cookie, err := r.Cookie(SessionCookieName)
 		if err != nil || cookie.Value == "" {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
@@ -308,7 +310,7 @@ func (a *AuthService) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 func (a *AuthService) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return a.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
-		cookie, _ := r.Cookie(sessionCookieName)
+		cookie, _ := r.Cookie(SessionCookieName)
 		username, _ := a.ValidateSessionToken(cookie.Value)
 
 		if a.GetUserRole(username) != "admin" {

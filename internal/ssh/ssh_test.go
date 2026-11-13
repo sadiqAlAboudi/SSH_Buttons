@@ -1,4 +1,4 @@
-package main
+package ssh
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"net"
 	"strings"
 	"testing"
+
+	"ssh_buttons/internal/config"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -88,7 +90,7 @@ func TestGracefulDisconnect(t *testing.T) {
 }
 
 func TestBuildSSHClientConfig_LegacyCiphers(t *testing.T) {
-	modernHost := HostConfig{
+	modernHost := config.HostConfig{
 		Name:          "modern",
 		User:          "admin",
 		Password:      "pass",
@@ -102,7 +104,7 @@ func TestBuildSSHClientConfig_LegacyCiphers(t *testing.T) {
 		t.Errorf("Expected default host key algorithms, got %v", cfgModern.HostKeyAlgorithms)
 	}
 
-	legacyHost := HostConfig{
+	legacyHost := config.HostConfig{
 		Name:          "legacy",
 		User:          "admin",
 		Password:      "pass",
@@ -237,22 +239,20 @@ func TestSSHRunner_ExecWithStdin(t *testing.T) {
 	})
 	defer cleanup()
 
-	cm := &ConfigManager{
-		config: &AppConfig{
-			Hosts: map[string]HostConfig{
-				"test-router": {
-					Name:     "Test Router",
-					Host:     host,
-					Port:     port,
-					User:     "admin",
-					Password: "secretpassword",
-				},
+	cm := config.NewTestConfigManager(&config.AppConfig{
+		Hosts: map[string]config.HostConfig{
+			"test-router": {
+				Name:     "Test Router",
+				Host:     host,
+				Port:     port,
+				User:     "admin",
+				Password: "secretpassword",
 			},
 		},
-	}
+	})
 
 	runner := NewSSHRunner(cm)
-	btn := ButtonConfig{
+	btn := config.ButtonConfig{
 		ID:      "reboot-btn",
 		Label:   "Reboot Router",
 		Host:    "test-router",
@@ -318,23 +318,21 @@ func TestSSHRunner_PTYShellExecution(t *testing.T) {
 	})
 	defer cleanup()
 
-	cm := &ConfigManager{
-		config: &AppConfig{
-			Hosts: map[string]HostConfig{
-				"cisco-switch": {
-					Name:     "Cisco Switch",
-					Host:     host,
-					Port:     port,
-					User:     "cisco",
-					Password: "ciscopassword",
-					PTY:      true,
-				},
+	cm := config.NewTestConfigManager(&config.AppConfig{
+		Hosts: map[string]config.HostConfig{
+			"cisco-switch": {
+				Name:     "Cisco Switch",
+				Host:     host,
+				Port:     port,
+				User:     "cisco",
+				Password: "ciscopassword",
+				PTY:      true,
 			},
 		},
-	}
+	})
 
 	runner := NewSSHRunner(cm)
-	btn := ButtonConfig{
+	btn := config.ButtonConfig{
 		ID:      "show-ip-btn",
 		Label:   "Show Interfaces",
 		Host:    "cisco-switch",
@@ -369,23 +367,21 @@ func TestSSHRunner_ExecChannelFailedDiagnosticHint(t *testing.T) {
 	})
 	defer cleanup()
 
-	cm := &ConfigManager{
-		config: &AppConfig{
-			Hosts: map[string]HostConfig{
-				"switch": {
-					Name:     "Network Switch",
-					Host:     host,
-					Port:     port,
-					User:     "cisco",
-					Password: "pass",
-					PTY:      false, // explicitly false
-				},
+	cm := config.NewTestConfigManager(&config.AppConfig{
+		Hosts: map[string]config.HostConfig{
+			"switch": {
+				Name:     "Network Switch",
+				Host:     host,
+				Port:     port,
+				User:     "cisco",
+				Password: "pass",
+				PTY:      false, // explicitly false
 			},
 		},
-	}
+	})
 
 	runner := NewSSHRunner(cm)
-	btn := ButtonConfig{
+	btn := config.ButtonConfig{
 		ID:      "failed-btn",
 		Label:   "Show Version",
 		Host:    "switch",

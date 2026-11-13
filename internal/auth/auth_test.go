@@ -1,4 +1,4 @@
-package main
+package auth
 
 import (
 	"net/http"
@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"ssh_buttons/internal/config"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -34,7 +36,7 @@ users:
 		t.Fatalf("Failed to write temp config: %v", err)
 	}
 
-	cm, err := NewConfigManager(configPath)
+	cm, err := config.NewConfigManager(configPath)
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
@@ -89,7 +91,7 @@ users:
 	// Operator should be forbidden (403)
 	opToken := auth.GenerateSessionToken("operator_bob")
 	reqOp := httptest.NewRequest("GET", "/config", nil)
-	reqOp.AddCookie(&http.Cookie{Name: sessionCookieName, Value: opToken})
+	reqOp.AddCookie(&http.Cookie{Name: SessionCookieName, Value: opToken})
 	rrOp := httptest.NewRecorder()
 	guarded.ServeHTTP(rrOp, reqOp)
 	if rrOp.Code != http.StatusForbidden {
@@ -98,7 +100,7 @@ users:
 
 	// Admin should be allowed (200)
 	reqAdmin := httptest.NewRequest("GET", "/config", nil)
-	reqAdmin.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+	reqAdmin.AddCookie(&http.Cookie{Name: SessionCookieName, Value: token})
 	rrAdmin := httptest.NewRecorder()
 	guarded.ServeHTTP(rrAdmin, reqAdmin)
 	if rrAdmin.Code != http.StatusOK || !adminHandlerCalled {

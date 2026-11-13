@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -82,6 +82,11 @@ func NewConfigManager(path string) (*ConfigManager, error) {
 		return nil, err
 	}
 	return cm, nil
+}
+
+// NewTestConfigManager returns a ConfigManager initialized with an in-memory AppConfig for testing.
+func NewTestConfigManager(cfg *AppConfig) *ConfigManager {
+	return &ConfigManager{config: cfg}
 }
 
 func (cm *ConfigManager) Get() *AppConfig {

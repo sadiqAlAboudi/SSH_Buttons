@@ -10,6 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"ssh_buttons/internal/config"
+	"ssh_buttons/internal/server"
 )
 
 func main() {
@@ -23,7 +26,7 @@ func main() {
 	}
 
 	log.Printf("[INFO] Loading configuration from %s...", configPath)
-	configMgr, err := NewConfigManager(configPath)
+	configMgr, err := config.NewConfigManager(configPath)
 	if err != nil {
 		log.Fatalf("[FATAL] Could not initialize configuration: %v", err)
 	}
@@ -34,18 +37,18 @@ func main() {
 	}
 	log.Printf("[INFO] Config loaded successfully: %d hosts, %d buttons configured", len(cfg.Hosts), len(cfg.ButtonsByID))
 
-	server, err := NewServer(configMgr)
+	srv, err := server.NewServer(configMgr)
 	if err != nil {
 		log.Fatalf("[FATAL] Could not initialize web server: %v", err)
 	}
 
 	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
+	srv.RegisterRoutes(mux)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpServer := &http.Server{
 		Addr:         addr,
-		Handler:      SecurityHeadersMiddleware(mux),
+		Handler:      server.SecurityHeadersMiddleware(mux),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,

@@ -1,0 +1,229 @@
+{{define "title"}}{{.T.app_title}} - {{.T.app_tagline}}{{end}}
+
+{{define "header_actions"}}
+<!-- Language Switcher -->
+<a href="/set-lang?lang={{.OtherLang}}" class="btn-header" title="{{.T.language}}">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="2" y1="12" x2="22" y2="12"></line>
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+  </svg>
+  <span>{{.OtherLabel}}</span>
+</a>
+
+<!-- Documentation Link -->
+<a href="/docs" class="btn-header" title="{{.T.docs}}">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+  </svg>
+  <span>{{.T.docs}}</span>
+</a>
+
+{{if .IsAdmin}}
+<!-- Config Editor Button (Admin only) -->
+<a href="/config" class="btn-header" title="{{.T.config_editor}}">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M12 20h9"></path>
+    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+  </svg>
+  <span>{{.T.config_editor}}</span>
+</a>
+
+<!-- Reload Config Button (Admin only) -->
+<form method="POST" action="/reload" style="display:inline;">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <button type="submit" class="btn-header" title="{{.T.reload_config}}">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+    </svg>
+    <span>{{.T.reload_config}}</span>
+  </button>
+</form>
+{{end}}
+
+<!-- Logout Button -->
+<form method="POST" action="/logout" style="display:inline;">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <button type="submit" class="btn-header" title="{{.T.logout}}">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+    </svg>
+    <span>{{.T.logout}}</span>
+  </button>
+</form>
+{{end}}
+
+{{define "content"}}
+<main class="container">
+  {{if .Flash}}
+  <div class="flash-alert" role="status">
+    <span>{{.Flash}}</span>
+  </div>
+  {{end}}
+
+  {{if .LastResult}}
+  <section class="result-card">
+    <div class="result-bar">
+      <div class="result-status-wrap">
+        <span class="pill {{if .LastResult.Success}}pill-success{{else}}pill-failed{{end}}">
+          {{if .LastResult.Success}}● {{.T.success}}{{else}}● {{.T.failed}} ({{.T.exit_code}} {{.LastResult.ExitCode}}){{end}}
+        </span>
+        <strong style="color: var(--text); font-size: 0.875rem;">{{.LastResult.ButtonLabel}}</strong>
+        <span class="pill pill-meta">{{.LastResult.HostName}} ({{.LastResult.HostAddress}})</span>
+      </div>
+      <div class="result-meta">
+        <span>{{.T.duration}}: <strong style="direction: ltr; display: inline-block;">{{.LastResult.Duration}}</strong></span>
+        <span>{{.T.time}}: {{.LastResult.ExecutedAt.Format "15:04:05"}}</span>
+      </div>
+    </div>
+
+    <div class="result-body">
+      {{if .LastResult.Error}}
+      <div class="error-diagnostic">
+        <div style="font-weight: 600; margin-bottom: 0.3rem;">{{.T.error_details}}</div>
+        <div style="direction: ltr; font-family: monospace;">{{.LastResult.Error}}</div>
+        {{if .LastResult.DiagnosticHint}}
+        <div class="diagnostic-hint">
+          <strong>💡 Diagnostic Hint:</strong> {{.LastResult.DiagnosticHint}}
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+
+      {{if .LastResult.Stdout}}
+      <div style="margin-bottom: 1rem;">
+        <div class="result-label">{{.T.output}}</div>
+        <div class="code-output">{{.LastResult.Stdout}}</div>
+      </div>
+      {{end}}
+
+      {{if .LastResult.Stderr}}
+      <div>
+        <div class="result-label" style="color: #fca5a5;">{{.T.standard_error}}</div>
+        <div class="code-output error">{{.LastResult.Stderr}}</div>
+      </div>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+
+  <!-- Command Categories and Action Buttons -->
+  {{range .Categories}}
+  <section class="category-section">
+    <div class="category-header">
+      <h2 class="category-title">{{.Name}}</h2>
+      {{if .Description}}<p class="category-desc">{{.Description}}</p>{{end}}
+    </div>
+
+    <div class="grid">
+      {{range .Buttons}}
+      {{if .Confirm}}
+      <!-- Button requiring Confirmation Modal -->
+      <button type="button" class="btn-act {{.Style}}"
+              onclick="promptConfirmation('{{.ID}}', '{{.Label}}', '{{.Host}}', '{{.Command}}', '{{.Style}}')">
+        <div class="card-top">
+          <span class="card-title">{{.Label}}</span>
+          <span class="btn-indicator"></span>
+        </div>
+        <div class="card-host">{{.Host}}</div>
+        <div class="card-cmd" title="{{.Command}}">$ {{.Command}}</div>
+      </button>
+      {{else}}
+      <!-- Direct Execution Form Button -->
+      <form method="POST" action="/run" style="margin:0; display:contents;">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="button_id" value="{{.ID}}">
+        <button type="submit" class="btn-act {{.Style}}">
+          <div class="card-top">
+            <span class="card-title">{{.Label}}</span>
+            <span class="btn-indicator"></span>
+          </div>
+          <div class="card-host">{{.Host}}</div>
+          <div class="card-cmd" title="{{.Command}}">$ {{.Command}}</div>
+        </button>
+      </form>
+      {{end}}
+      {{end}}
+    </div>
+  </section>
+  {{else}}
+  <div class="empty-state">
+    <p style="font-size: 1.1rem; font-weight: 500;">{{.T.no_buttons_title}}</p>
+    <p style="font-size: 0.875rem;">{{.T.no_buttons_desc}}</p>
+  </div>
+  {{end}}
+
+  <!-- Native Confirmation Dialog -->
+  <dialog id="confirmDialog" aria-labelledby="dialogTitle">
+    <div class="dlg-header">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <h3 class="dlg-title" id="dialogTitle">{{.T.confirm_execution}}</h3>
+    </div>
+    <p class="dlg-text">{{.T.confirm_message}}</p>
+
+    <div class="dlg-box">
+      <div style="color: var(--text-muted); font-size: 0.75rem; margin-bottom: 0.25rem;">{{.T.target_host}}: <span id="dialogHost" style="color: #60a5fa;"></span></div>
+      <div style="color: var(--text-muted); font-size: 0.75rem; margin-bottom: 0.25rem;">{{.T.command}}:</div>
+      <code id="dialogCmd" style="word-break: break-all; color: var(--text);"></code>
+    </div>
+
+    <form method="POST" action="/run" id="confirmForm">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="button_id" id="confirmButtonId" value="">
+      <div class="dlg-btns">
+        <button type="button" class="btn-dlg-cancel" onclick="closeConfirmation()">{{.T.cancel}}</button>
+        <button type="submit" class="btn-dlg-submit" id="dialogSubmitBtn">{{.T.proceed}}</button>
+      </div>
+    </form>
+  </dialog>
+</main>
+{{end}}
+
+{{define "scripts"}}
+<script>
+  const dialog = document.getElementById('confirmDialog');
+  const confirmForm = document.getElementById('confirmForm');
+  const confirmButtonId = document.getElementById('confirmButtonId');
+  const dialogTitle = document.getElementById('dialogTitle');
+  const dialogHost = document.getElementById('dialogHost');
+  const dialogCmd = document.getElementById('dialogCmd');
+  const dialogSubmitBtn = document.getElementById('dialogSubmitBtn');
+
+  function promptConfirmation(id, label, host, cmd, style) {
+    confirmButtonId.value = id;
+    dialogTitle.textContent = label;
+    dialogHost.textContent = host;
+    dialogCmd.textContent = cmd;
+
+    if (style === 'danger') {
+      dialogSubmitBtn.style.background = '#dc2626';
+    } else if (style === 'warning') {
+      dialogSubmitBtn.style.background = '#d97706';
+    } else {
+      dialogSubmitBtn.style.background = '#2563eb';
+    }
+
+    dialog.showModal();
+  }
+
+  function closeConfirmation() {
+    dialog.close();
+  }
+
+  dialog.addEventListener('click', (e) => {
+    const rect = dialog.getBoundingClientRect();
+    const inDialog = (
+      rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+      rect.left <= e.clientX && e.clientX <= rect.left + rect.width
+    );
+    if (!inDialog) {
+      dialog.close();
+    }
+  });
+</script>
+{{end}}

@@ -1,0 +1,93 @@
+{{define "title"}}{{.T.app_title}} / {{.T.config_editor}}{{end}}
+{{define "brand_title"}}{{.T.app_title}} / {{.T.config_editor}}{{end}}
+
+{{define "header_actions"}}
+<!-- Language Switcher -->
+<a href="/set-lang?lang={{.OtherLang}}" class="btn-header" title="{{.T.language}}">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="2" y1="12" x2="22" y2="12"></line>
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+  </svg>
+  <span>{{.OtherLabel}}</span>
+</a>
+
+<!-- Documentation Link (Opens in new tab to preserve editor state) -->
+<a href="/docs" target="_blank" class="btn-header" title="{{.T.docs}}">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+  </svg>
+  <span>{{.T.docs}}</span>
+</a>
+
+<!-- Discard Link -->
+<a href="/" class="btn-header">
+  {{.T.discard}}
+</a>
+
+<!-- Save Button -->
+<button type="submit" form="configForm" class="btn-header btn-save">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+    <polyline points="7 3 7 8 15 8"></polyline>
+  </svg>
+  <span>{{.T.save_changes}}</span>
+</button>
+{{end}}
+
+{{define "content"}}
+<main class="container" style="display: flex; flex-direction: column;">
+  <form id="configForm" method="POST" action="/config" style="display: flex; flex-direction: column; flex: 1;">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <div class="editor-card">
+      <div class="editor-top-bar">
+        <span class="editor-file-badge">config.yml</span>
+        <span>{{.T.editor_hint}}</span>
+      </div>
+
+      {{if .Error}}
+      <div class="error-banner" role="alert">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>{{.Error}}</span>
+      </div>
+      {{end}}
+
+      <textarea id="configYaml" name="yaml" class="yaml-editor" spellcheck="false" required autofocus>{{.YAML}}</textarea>
+
+      <div class="editor-footer-actions">
+        <a href="/" class="btn-header" style="text-align: center;">{{.T.discard}}</a>
+        <button type="submit" class="btn-header btn-save">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+            <polyline points="7 3 7 8 15 8"></polyline>
+          </svg>
+          <span>{{.T.save_changes}}</span>
+        </button>
+      </div>
+    </div>
+  </form>
+</main>
+{{end}}
+
+{{define "scripts"}}
+<script>
+  const textarea = document.getElementById('configYaml');
+  // Tab key inserts 2 spaces
+  textarea.addEventListener('keydown', function(e) {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = this.selectionStart;
+      const end = this.selectionEnd;
+      this.value = this.value.substring(0, start) + '  ' + this.value.substring(end);
+      this.selectionStart = this.selectionEnd = start + 2;
+    }
+  });
+</script>
+{{end}}

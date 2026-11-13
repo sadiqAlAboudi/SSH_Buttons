@@ -1,4 +1,4 @@
-package main
+package i18n
 
 import (
 	"net/http"
@@ -36,7 +36,7 @@ func TestResolveLanguage(t *testing.T) {
 	// 2. Cookie takes precedence
 	reqWithCookie := httptest.NewRequest("GET", "/", nil)
 	reqWithCookie.AddCookie(&http.Cookie{
-		Name:  langCookieName,
+		Name:  LangCookieName,
 		Value: LangAR,
 	})
 	if lang := mgr.ResolveLanguage(reqWithCookie); lang != LangAR {
@@ -46,7 +46,7 @@ func TestResolveLanguage(t *testing.T) {
 	// 3. Invalid cookie value falls back to Accept-Language or default
 	reqInvalidCookie := httptest.NewRequest("GET", "/", nil)
 	reqInvalidCookie.AddCookie(&http.Cookie{
-		Name:  langCookieName,
+		Name:  LangCookieName,
 		Value: "xyz",
 	})
 	if lang := mgr.ResolveLanguage(reqInvalidCookie); lang != LangEN {

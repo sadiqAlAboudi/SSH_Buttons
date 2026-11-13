@@ -1,0 +1,55 @@
+{{define "title"}}{{.T.sign_in}} - {{.T.app_title}}{{end}}
+
+{{define "body_class"}}page-login{{end}}
+
+{{define "header"}}
+<div class="top-bar">
+  <a href="/set-lang?lang={{.OtherLang}}" class="btn-lang" title="{{.T.language}}">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="2" y1="12" x2="22" y2="12"></line>
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+    </svg>
+    <span>{{.OtherLabel}}</span>
+  </a>
+</div>
+{{end}}
+
+{{define "content"}}
+<main class="login-card">
+  <div class="brand-header">
+    <img src="/static/icon.svg" alt="Logo" class="brand-logo">
+    <h1 class="brand-title">{{.T.app_title}}</h1>
+    <p class="brand-sub">{{.T.app_tagline}}</p>
+  </div>
+
+  {{if .Error}}
+  <div class="error-alert" role="alert">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="12" y1="8" x2="12" y2="12"></line>
+      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+    </svg>
+    <span>{{.Error}}</span>
+  </div>
+  {{end}}
+
+  <form method="POST" action="/login">
+    <div class="form-group">
+      <label for="username">{{.T.username}}</label>
+      <input type="text" id="username" name="username" required autofocus autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label for="password">{{.T.password}}</label>
+      <input type="password" id="password" name="password" required autocomplete="current-password">
+    </div>
+    <button type="submit" class="btn-submit">{{.T.sign_in}}</button>
+  </form>
+
+  <div class="footer-note">
+    <span>{{.T.footer_tagline}}</span>
+  </div>
+</main>
+{{end}}
+
+{{define "footer"}}{{end}}
