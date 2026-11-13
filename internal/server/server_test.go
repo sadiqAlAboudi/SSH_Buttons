@@ -700,8 +700,8 @@ func TestGUIConfigSaveStructured_AddUserAndHost(t *testing.T) {
 	}
 }
 
-func TestGUIConfigSaveStructured_AdminSafeguard(t *testing.T) {
-	server, _, _ := setupTestServer(t)
+func TestGUIConfigSaveStructured_AutoAddDefaultAdmin(t *testing.T) {
+	server, cm, _ := setupTestServer(t)
 	mux := http.NewServeMux()
 	server.RegisterRoutes(mux)
 
@@ -728,13 +728,13 @@ func TestGUIConfigSaveStructured_AdminSafeguard(t *testing.T) {
 	rrSave := httptest.NewRecorder()
 	mux.ServeHTTP(rrSave, reqSave)
 
-	if rrSave.Code != http.StatusBadRequest {
-		t.Fatalf("Expected 400 Bad Request when saving without admin user, got %d", rrSave.Code)
+	if rrSave.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 See Other and auto-injection of default admin, got %d. Body: %s", rrSave.Code, rrSave.Body.String())
 	}
 
-	body := rrSave.Body.String()
-	if !strings.Contains(body, "admin") {
-		t.Errorf("Expected error banner mentioning 'admin', got body: %s", body)
+	cfg := cm.Get()
+	if _, ok := cfg.UsersByUsername["admin"]; !ok {
+		t.Errorf("Expected default admin user auto-injected when saving without admin")
 	}
 }
 

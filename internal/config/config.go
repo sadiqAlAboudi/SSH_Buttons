@@ -146,7 +146,7 @@ func (cm *ConfigManager) GetRawConfig() (RawRoot, error) {
 
 // SaveStructuredConfig validates and serializes a RawRoot struct to YAML, hashes any plaintext passwords, and persists it.
 func (cm *ConfigManager) SaveStructuredConfig(raw RawRoot) error {
-	// 1. Validate users: must have at least one user with admin role
+	// 1. Validate users. If no admin account is provided, automatically inject the default admin user.
 	hasAdmin := false
 	for _, u := range raw.Users {
 		uname := u.User
@@ -161,7 +161,19 @@ func (cm *ConfigManager) SaveStructuredConfig(raw RawRoot) error {
 		}
 	}
 	if !hasAdmin {
-		return errors.New("at least one user must have the 'admin' role")
+		adminUser := "admin"
+		if u := os.Getenv("ADMIN_USER"); u != "" {
+			adminUser = u
+		}
+		adminPass := "adminpassword"
+		if p := os.Getenv("ADMIN_PASSWORD"); p != "" {
+			adminPass = p
+		}
+		raw.Users = append([]RawUser{{
+			User: adminUser,
+			Pass: adminPass,
+			Role: "admin",
+		}}, raw.Users...)
 	}
 
 	// 2. Hash any new plaintext passwords with bcrypt
@@ -288,7 +300,7 @@ type RawRoot struct {
 	Buttons    []RawButton        `yaml:"buttons,omitempty" json:"buttons,omitempty"`
 }
 
-// DefaultConfigYAML is the built-in starter configuration automatically written to config.yml on first launch.
+// DefaultConfigYAML is the built-in clean starter configuration with only the default admin user.
 const DefaultConfigYAML = `# ==============================================================================
 # SSH Buttons - Configuration (config.yml)
 # Full documentation & configuration reference: visit /docs in the Web UI
@@ -300,95 +312,47 @@ users:
     pass: "adminpassword"
     role: "admin"
 
-  - user: "operator1"
-    pass: "operatorpassword"
-    role: "operator"
+# 2. Target Remote Hosts (Add your hosts in the GUI Config Editor or define below)
+hosts: {}
 
-# 2. Target Remote Hosts
-hosts:
-  srv_linux:
-    name: "Ubuntu Production 01"
-    host: "192.168.1.10"
-    user: "root"
-    key: "./keys/id_ed25519"
-
-  router_mikrotik:
-    name: "Core Gateway (MikroTik)"
-    host: "192.168.1.1"
-    user: "admin"
-    pass: "RouterPassword"
-    legacy_ciphers: true # Enable for RouterOS v6 / older ciphers
-
-  switch_cisco:
-    name: "Access Switch (Cisco 2960/3750)"
-    host: "192.168.1.2"
-    user: "cisco"
-    pass: "CiscoEnablePassword"
-    pty: true            # Required: Cisco IOS requires interactive PTY shell
-    legacy_ciphers: true # Enable for older DH groups and ssh-rsa
-
-# 3. Categories & Action Buttons
-categories:
-  - name: "Linux Operations"
-    description: "Standard maintenance and diagnostics for production Linux"
-    host: "srv_linux"
-    buttons:
-      - name: "Restart Docker"
-        cmd: "systemctl restart docker"
-        warning: true
-        timeout: 30
-
-      - name: "Check Disk Space"
-        cmd: "df -h"
-
-      - name: "Check Memory Usage"
-        cmd: "free -m"
-
-      - name: "Reboot Server"
-        cmd: "sudo reboot"
-        danger: true
-
-      - name: "Power Off Server"
-        cmd: "sudo shutdown -h now"
-        danger: true
-
-  - name: "Network Gear"
-    description: "Diagnostics and actions for core router and access switch"
-    buttons:
-      - name: "Check MikroTik IPs"
-        host: "router_mikrotik"
-        cmd: "/ip address print"
-        style: "primary"
-
-      - name: "Backup MikroTik"
-        host: "router_mikrotik"
-        cmd: "/system backup save name=auto-backup"
-        style: "success"
-
-      - name: "Reboot MikroTik"
-        host: "router_mikrotik"
-        cmd: "/system reboot"
-        stdin: "y\n"
-        danger: true
-
-      - name: "Show Cisco Interfaces"
-        host: "switch_cisco"
-        cmd: |
-          terminal length 0
-          show ip interface brief
-        style: "primary"
-
-      - name: "Save Cisco Config"
-        host: "switch_cisco"
-        cmd: "write memory"
-        style: "success"
-
-      - name: "Reload Cisco Switch"
-        host: "switch_cisco"
-        cmd: "reload"
-        stdin: "\n"
-        danger: true
+# 3. Categories & Action Buttons (Add your buttons in the GUI Config Editor or define below)
+categories: []
 `
+
+// GenerateDefaultConfigYAML creates a starter configuration with the default user and environment overrides.
+func GenerateDefaultConfigYAML() string {
+	adminUser := "admin"
+	if u := os.Getenv("ADMIN_USER"); u != "" {
+		adminUser = u
+	} else if u := os.Getenv("ADMIN_USERNAME"); u != "" {
+		adminUser = u
+	}
+
+	adminPass := "adminpassword"
+	if p := os.Getenv("ADMIN_PASSWORD"); p != "" {
+		adminPass = p
+	} else if p := os.Getenv("ADMIN_PASS"); p != "" {
+		adminPass = p
+	}
+
+	return fmt.Sprintf(`# ==============================================================================
+# SSH Buttons - Configuration (config.yml)
+# Full documentation & configuration reference: visit /docs in the Web UI
+# ==============================================================================
+
+# 1. User Accounts & Roles (roles: "admin" | "operator")
+users:
+  - user: %q
+    pass: %q
+    role: "admin"
+
+# 2. Target Remote Hosts (Add your hosts in the GUI Config Editor or define below)
+hosts: {}
+
+# 3. Categories & Action Buttons (Add your buttons in the GUI Config Editor or define below)
+categories: []
+`, adminUser, adminPass)
+}
 
 func loadConfigFromFile(path string) (*AppConfig, error) {
 	// Auto-initialize default configuration if target config does not exist
@@ -396,8 +360,9 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 		if dir := filepath.Dir(path); dir != "" && dir != "." {
 			_ = os.MkdirAll(dir, 0755)
 		}
-		if writeErr := os.WriteFile(path, []byte(DefaultConfigYAML), 0644); writeErr == nil {
-			log.Printf("[INFO] %s not found; automatically initialized with default starter configuration", path)
+		defaultContent := GenerateDefaultConfigYAML()
+		if writeErr := os.WriteFile(path, []byte(defaultContent), 0644); writeErr == nil {
+			log.Printf("[INFO] %s not found; automatically initialized with default user and configuration", path)
 		} else {
 			log.Printf("[WARN] Failed to write default configuration to %s: %v", path, writeErr)
 		}

@@ -111,8 +111,11 @@ func TestConfigAutoInitialization(t *testing.T) {
 	if _, ok := cfg.UsersByUsername["admin"]; !ok {
 		t.Errorf("Expected admin user loaded from auto-generated config, got %+v", cfg.UsersByUsername)
 	}
-	if len(cfg.Hosts) < 2 {
-		t.Errorf("Expected default sample hosts loaded from auto-generated config, got %d hosts", len(cfg.Hosts))
+	if len(cfg.Hosts) != 0 {
+		t.Errorf("Expected 0 sample hosts in clean starter config, got %d hosts", len(cfg.Hosts))
+	}
+	if len(cfg.Categories) != 0 {
+		t.Errorf("Expected 0 sample categories in clean starter config, got %d categories", len(cfg.Categories))
 	}
 }
 
@@ -329,13 +332,16 @@ categories:
 		t.Fatalf("Unexpected users in raw config: %+v", raw.Users)
 	}
 
-	// 1. Test admin safeguard: saving without admin must fail
+	// 1. Test auto-injection of default admin when saving without admin user
 	noAdminRaw := raw
 	noAdminRaw.Users = []RawUser{
 		{User: "operator1", Pass: "somepass", Role: "operator"},
 	}
-	if err := cm.SaveStructuredConfig(noAdminRaw); err == nil {
-		t.Errorf("Expected error when saving config without any admin user, got nil")
+	if err := cm.SaveStructuredConfig(noAdminRaw); err != nil {
+		t.Fatalf("Expected SaveStructuredConfig to auto-inject default admin, got error: %v", err)
+	}
+	if _, ok := cm.Get().UsersByUsername["admin"]; !ok {
+		t.Errorf("Expected auto-injected admin in config")
 	}
 
 	// 2. Add an operator user with plaintext password and save
