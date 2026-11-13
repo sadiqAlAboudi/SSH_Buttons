@@ -3,7 +3,7 @@
 *.exe
 *.test
 
-# Keys and local overrides
+# Keys and local secrets
 /keys/
 *.pem
 *.key
@@ -14,5 +14,6 @@ id_*
 .idea/
 .vscode/
 
-# config
+# Local configs and backups
 config.yml
+*.bak

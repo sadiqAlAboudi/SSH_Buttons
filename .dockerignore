@@ -1,0 +1,17 @@
+.git
+.gitignore
+.dockerignore
+*.md
+docker-compose*.yml
+config.yml
+*.bak
+keys/
+*.pem
+*.key
+id_*
+ssh_buttons
+*.exe
+*.test
+.idea/
+.vscode/
+.DS_Store
