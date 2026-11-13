@@ -298,3 +298,99 @@ categories:
 		t.Errorf("Expected stdin 'y\\n', got %q", btnReboot.Stdin)
 	}
 }
+
+func TestSaveStructuredConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+	initialYAML := `
+users:
+  - user: "admin"
+    pass: "adminpass"
+    role: "admin"
+hosts:
+  host1:
+    name: "Server 1"
+    host: "10.0.0.1"
+    user: "root"
+categories:
+  - name: "General"
+    buttons:
+      - name: "Status"
+        cmd: "uptime"
+`
+	if err := os.WriteFile(configPath, []byte(initialYAML), 0644); err != nil {
+		t.Fatalf("Failed to write initial config: %v", err)
+	}
+
+	cm, err := NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create ConfigManager: %v", err)
+	}
+
+	raw, err := cm.GetRawConfig()
+	if err != nil {
+		t.Fatalf("GetRawConfig failed: %v", err)
+	}
+
+	if len(raw.Users) != 1 || raw.Users[0].User != "admin" {
+		t.Fatalf("Unexpected users in raw config: %+v", raw.Users)
+	}
+
+	// 1. Test admin safeguard: saving without admin must fail
+	noAdminRaw := raw
+	noAdminRaw.Users = []RawUser{
+		{User: "operator1", Pass: "somepass", Role: "operator"},
+	}
+	if err := cm.SaveStructuredConfig(noAdminRaw); err == nil {
+		t.Errorf("Expected error when saving config without any admin user, got nil")
+	}
+
+	// 2. Add an operator user with plaintext password and save
+	raw.Users = append(raw.Users, RawUser{
+		User: "operator1",
+		Pass: "newSecret123",
+		Role: "operator",
+	})
+	// Add a new host and button
+	if raw.Hosts == nil {
+		raw.Hosts = make(map[string]RawHost)
+	}
+	raw.Hosts["host2"] = RawHost{
+		Name: "Server 2",
+		Host: "10.0.0.2",
+		User: "admin",
+		Pass: "hostpass",
+	}
+	raw.Categories[0].Buttons = append(raw.Categories[0].Buttons, RawButton{
+		Name:  "Disk Check",
+		Cmd:   "df -h",
+		Host:  "host2",
+		Style: "primary",
+	})
+
+	if err := cm.SaveStructuredConfig(raw); err != nil {
+		t.Fatalf("SaveStructuredConfig failed: %v", err)
+	}
+
+	// Verify reload
+	cfg := cm.Get()
+	if len(cfg.Users) != 2 {
+		t.Errorf("Expected 2 users after save, got %d", len(cfg.Users))
+	}
+	opUser, ok := cfg.UsersByUsername["operator1"]
+	if !ok {
+		t.Fatalf("Expected operator1 to exist in loaded users")
+	}
+	// Verify password was hashed with bcrypt
+	if !strings.HasPrefix(opUser.Password, "$2a$") {
+		t.Errorf("Expected operator1 password to be hashed with bcrypt, got %q", opUser.Password)
+	}
+	// Verify new host and button
+	if _, ok := cfg.Hosts["host2"]; !ok {
+		t.Errorf("Expected host2 in config hosts")
+	}
+	if len(cfg.Categories[0].Buttons) != 2 {
+		t.Errorf("Expected 2 buttons in category, got %d", len(cfg.Categories[0].Buttons))
+	}
+}
+

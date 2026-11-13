@@ -27,7 +27,7 @@
 </a>
 
 <!-- Save Button -->
-<button type="submit" form="configForm" class="btn-header btn-save">
+<button type="button" onclick="submitConfigForm()" class="btn-header btn-save">
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
     <polyline points="17 21 17 13 7 13 7 21"></polyline>
@@ -41,53 +41,1092 @@
 <main class="container" style="display: flex; flex-direction: column;">
   <form id="configForm" method="POST" action="/config" style="display: flex; flex-direction: column; flex: 1;">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-    <div class="editor-card">
-      <div class="editor-top-bar">
-        <span class="editor-file-badge">config.yml</span>
-        <span>{{.T.editor_hint}}</span>
-      </div>
+    <input type="hidden" name="config_mode" id="configMode" value="gui">
+    <input type="hidden" name="config_json" id="configJson" value="">
 
-      {{if .Error}}
-      <div class="error-banner" role="alert">
+    <!-- Navigation Tabs -->
+    <nav class="config-tabs" aria-label="Configuration Sections">
+      <button type="button" class="config-tab-btn active" id="tabBtnCategories" onclick="switchTab('categories')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
         </svg>
-        <span>{{.Error}}</span>
-      </div>
-      {{end}}
+        <span>{{.T.tab_buttons}}</span>
+      </button>
 
-      <textarea id="configYaml" name="yaml" class="yaml-editor" spellcheck="false" required autofocus>{{.YAML}}</textarea>
+      <button type="button" class="config-tab-btn" id="tabBtnHosts" onclick="switchTab('hosts')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+          <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+          <line x1="6" y1="6" x2="6.01" y2="6"></line>
+          <line x1="6" y1="18" x2="6.01" y2="18"></line>
+        </svg>
+        <span>{{.T.tab_hosts}}</span>
+      </button>
 
-      <div class="editor-footer-actions">
-        <a href="/" class="btn-header" style="text-align: center;">{{.T.discard}}</a>
-        <button type="submit" class="btn-header btn-save">
+      <button type="button" class="config-tab-btn" id="tabBtnUsers" onclick="switchTab('users')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        <span>{{.T.tab_users}}</span>
+      </button>
+
+      <button type="button" class="config-tab-btn" id="tabBtnYaml" onclick="switchTab('yaml')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="16 18 22 12 16 6"></polyline>
+          <polyline points="8 6 2 12 8 18"></polyline>
+        </svg>
+        <span>{{.T.tab_yaml}}</span>
+      </button>
+    </nav>
+
+    {{if .Error}}
+    <div class="error-banner" role="alert" style="margin-bottom: 1.25rem;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <span>{{.Error}}</span>
+    </div>
+    {{end}}
+
+    <!-- Tab 1: Categories & Buttons -->
+    <section id="tabContentCategories" class="config-tab-content active">
+      <div class="section-toolbar">
+        <div class="section-toolbar-title">{{.T.tab_buttons}}</div>
+        <button type="button" class="btn-add" onclick="openAddCategoryModal()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-            <polyline points="17 21 17 13 7 13 7 21"></polyline>
-            <polyline points="7 3 7 8 15 8"></polyline>
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
-          <span>{{.T.save_changes}}</span>
+          <span>{{.T.add_category}}</span>
         </button>
       </div>
+      <div id="categoriesContainer"></div>
+    </section>
+
+    <!-- Tab 2: Remote Hosts -->
+    <section id="tabContentHosts" class="config-tab-content">
+      <div class="section-toolbar">
+        <div class="section-toolbar-title">{{.T.tab_hosts}}</div>
+        <button type="button" class="btn-add" onclick="openAddHostModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>{{.T.add_host}}</span>
+        </button>
+      </div>
+      <div id="hostsContainer"></div>
+    </section>
+
+    <!-- Tab 3: Users Accounts -->
+    <section id="tabContentUsers" class="config-tab-content">
+      <div class="section-toolbar">
+        <div class="section-toolbar-title">{{.T.tab_users}}</div>
+        <button type="button" class="btn-add" onclick="openAddUserModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>{{.T.add_user}}</span>
+        </button>
+      </div>
+      <div id="usersContainer"></div>
+    </section>
+
+    <!-- Tab 4: Raw YAML Editor -->
+    <section id="tabContentYaml" class="config-tab-content">
+      <div class="editor-card">
+        <div class="editor-top-bar">
+          <span class="editor-file-badge">config.yml</span>
+          <span>{{.T.editor_hint}}</span>
+        </div>
+        <textarea id="configYaml" name="yaml" class="yaml-editor" spellcheck="false">{{.YAML}}</textarea>
+      </div>
+    </section>
+
+    <div class="editor-footer-actions" style="margin-top: 1.25rem;">
+      <a href="/" class="btn-header" style="text-align: center;">{{.T.discard}}</a>
+      <button type="button" onclick="submitConfigForm()" class="btn-header btn-save">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+          <polyline points="7 3 7 8 15 8"></polyline>
+        </svg>
+        <span>{{.T.save_changes}}</span>
+      </button>
     </div>
   </form>
 </main>
+
+<!-- =========================================================================
+     MODAL DIALOGS
+     ========================================================================= -->
+
+<!-- Modal: User Account -->
+<dialog id="dlgUser" class="modal-dialog">
+  <div class="dlg-header">
+    <div class="dlg-title" id="dlgUserTitle">{{.T.add_user}}</div>
+  </div>
+  <form id="formUser" onsubmit="event.preventDefault(); saveUserModal();" class="modal-form-grid">
+    <input type="hidden" id="userEditIndex" value="-1">
+    <div class="modal-form-group">
+      <label for="inputUserName">{{.T.username}}</label>
+      <input type="text" id="inputUserName" required autocomplete="off">
+    </div>
+    <div class="modal-form-group">
+      <label for="inputUserPass">{{.T.password}}</label>
+      <input type="password" id="inputUserPass" autocomplete="new-password" placeholder="Leave blank to keep existing password">
+    </div>
+    <div class="modal-form-group">
+      <label for="selectUserRole">{{.T.role}}</label>
+      <select id="selectUserRole">
+        <option value="admin">{{.T.role_admin}}</option>
+        <option value="operator">{{.T.role_operator}}</option>
+      </select>
+    </div>
+    <div class="dlg-footer">
+      <button type="button" class="btn-dlg-cancel" onclick="document.getElementById('dlgUser').close()">{{.T.cancel}}</button>
+      <button type="submit" class="btn-submit" style="width: auto; min-width: 100px; margin-top: 0;">{{.T.save}}</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Modal: Host -->
+<dialog id="dlgHost" class="modal-dialog modal-dialog-wide">
+  <div class="dlg-header">
+    <div class="dlg-title" id="dlgHostTitle">{{.T.add_host}}</div>
+  </div>
+  <form id="formHost" onsubmit="event.preventDefault(); saveHostModal();" class="modal-form-grid">
+    <input type="hidden" id="hostEditKey" value="">
+    <div class="modal-form-row">
+      <div class="modal-form-group">
+        <label for="inputHostKey">{{.T.host_id}}</label>
+        <input type="text" id="inputHostKey" required placeholder="e.g. srv_linux" autocomplete="off">
+      </div>
+      <div class="modal-form-group">
+        <label for="inputHostName">{{.T.display_name}}</label>
+        <input type="text" id="inputHostName" placeholder="e.g. Ubuntu Web 01" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-form-row">
+      <div class="modal-form-group" style="flex: 2;">
+        <label for="inputHostAddress">{{.T.ip_or_hostname}}</label>
+        <input type="text" id="inputHostAddress" required placeholder="192.168.1.50" autocomplete="off">
+      </div>
+      <div class="modal-form-group" style="flex: 1;">
+        <label for="inputHostPort">{{.T.port}}</label>
+        <input type="text" id="inputHostPort" placeholder="22" value="22" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-form-row">
+      <div class="modal-form-group">
+        <label for="inputHostUser">{{.T.ssh_user}}</label>
+        <input type="text" id="inputHostUser" required placeholder="root" autocomplete="off">
+      </div>
+      <div class="modal-form-group">
+        <label for="selectHostAuthMethod">{{.T.auth_method}}</label>
+        <select id="selectHostAuthMethod" onchange="toggleHostAuthFields()">
+          <option value="key">{{.T.auth_key}}</option>
+          <option value="pass">{{.T.auth_pass}}</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-form-group" id="hostKeyGroup">
+      <label for="inputHostKeyPath">{{.T.key_path}}</label>
+      <input type="text" id="inputHostKeyPath" placeholder="./keys/id_ed25519" autocomplete="off">
+    </div>
+    <div class="modal-form-group" id="hostPassGroup" style="display: none;">
+      <label for="inputHostPass">{{.T.password}}</label>
+      <input type="password" id="inputHostPass" autocomplete="new-password">
+    </div>
+    <div class="modal-form-group" style="gap: 0.5rem; margin-top: 0.25rem;">
+      <label class="checkbox-label">
+        <input type="checkbox" id="checkHostPTY">
+        <span>{{.T.pty_shell}}</span>
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="checkHostLegacy">
+        <span>{{.T.legacy_ciphers}}</span>
+      </label>
+    </div>
+    <div class="dlg-footer">
+      <button type="button" class="btn-dlg-cancel" onclick="document.getElementById('dlgHost').close()">{{.T.cancel}}</button>
+      <button type="submit" class="btn-submit" style="width: auto; min-width: 100px; margin-top: 0;">{{.T.save}}</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Modal: Category -->
+<dialog id="dlgCategory" class="modal-dialog">
+  <div class="dlg-header">
+    <div class="dlg-title" id="dlgCategoryTitle">{{.T.add_category}}</div>
+  </div>
+  <form id="formCategory" onsubmit="event.preventDefault(); saveCategoryModal();" class="modal-form-grid">
+    <input type="hidden" id="categoryEditIndex" value="-1">
+    <div class="modal-form-group">
+      <label for="inputCategoryName">{{.T.category_name}}</label>
+      <input type="text" id="inputCategoryName" required placeholder="e.g. Linux Operations" autocomplete="off">
+    </div>
+    <div class="modal-form-group">
+      <label for="inputCategoryDesc">{{.T.category_desc}}</label>
+      <input type="text" id="inputCategoryDesc" placeholder="e.g. Routine maintenance actions" autocomplete="off">
+    </div>
+    <div class="modal-form-group">
+      <label for="selectCategoryHost">{{.T.default_host}}</label>
+      <select id="selectCategoryHost">
+        <option value="">-- None / Select Host --</option>
+      </select>
+    </div>
+    <div class="dlg-footer">
+      <button type="button" class="btn-dlg-cancel" onclick="document.getElementById('dlgCategory').close()">{{.T.cancel}}</button>
+      <button type="submit" class="btn-submit" style="width: auto; min-width: 100px; margin-top: 0;">{{.T.save}}</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Modal: Action Button -->
+<dialog id="dlgButton" class="modal-dialog modal-dialog-wide">
+  <div class="dlg-header">
+    <div class="dlg-title" id="dlgButtonTitle">{{.T.add_button}}</div>
+  </div>
+  <form id="formButton" onsubmit="event.preventDefault(); saveButtonModal();" class="modal-form-grid">
+    <input type="hidden" id="buttonCatIndex" value="0">
+    <input type="hidden" id="buttonEditIndex" value="-1">
+    <div class="modal-form-row">
+      <div class="modal-form-group">
+        <label for="inputButtonLabel">{{.T.button_label}}</label>
+        <input type="text" id="inputButtonLabel" required placeholder="e.g. Restart Docker" autocomplete="off">
+      </div>
+      <div class="modal-form-group">
+        <label for="selectButtonHost">{{.T.button_host}}</label>
+        <select id="selectButtonHost">
+          <option value="">{{.T.inherit_default}}</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-form-group">
+      <label for="inputButtonCommand">{{.T.button_command}}</label>
+      <textarea id="inputButtonCommand" rows="3" required placeholder="systemctl restart docker" style="width: 100%; background: #0d0f12; border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.85rem; font-size: 0.9375rem; color: var(--text); font-family: ui-monospace, monospace; outline: none;"></textarea>
+    </div>
+    <div class="modal-form-row">
+      <div class="modal-form-group">
+        <label for="selectButtonStyle">{{.T.style}}</label>
+        <select id="selectButtonStyle" onchange="handleButtonStyleChange()">
+          <option value="primary">{{.T.style_primary}}</option>
+          <option value="success">{{.T.style_success}}</option>
+          <option value="warning">{{.T.style_warning}}</option>
+          <option value="danger">{{.T.style_danger}}</option>
+          <option value="secondary">{{.T.style_secondary}}</option>
+        </select>
+      </div>
+      <div class="modal-form-group">
+        <label for="inputButtonTimeout">{{.T.timeout_seconds}}</label>
+        <input type="number" id="inputButtonTimeout" min="0" placeholder="e.g. 15">
+      </div>
+    </div>
+    <div class="modal-form-group">
+      <label for="inputButtonStdin">{{.T.stdin_input}}</label>
+      <input type="text" id="inputButtonStdin" placeholder='e.g. y\n for confirmation prompts'>
+    </div>
+    <div class="modal-form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="checkButtonConfirm">
+        <span>{{.T.require_confirm}}</span>
+      </label>
+    </div>
+    <div class="dlg-footer">
+      <button type="button" class="btn-dlg-cancel" onclick="document.getElementById('dlgButton').close()">{{.T.cancel}}</button>
+      <button type="submit" class="btn-submit" style="width: auto; min-width: 100px; margin-top: 0;">{{.T.save}}</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Modal: Delete Confirmation -->
+<dialog id="dlgDelete" class="modal-dialog">
+  <div class="dlg-header">
+    <div class="dlg-title" style="color: #f87171;">{{.T.confirm_delete_title}}</div>
+  </div>
+  <p class="dlg-text" id="dlgDeleteText"></p>
+  <div class="dlg-footer">
+    <button type="button" class="btn-dlg-cancel" onclick="document.getElementById('dlgDelete').close()">{{.T.cancel}}</button>
+    <button type="button" id="btnConfirmDelete" class="btn-action-icon danger" style="padding: 0.6rem 1.2rem; font-weight: 600;">{{.T.delete}}</button>
+  </div>
+</dialog>
+
+<!-- Safely embedded raw configuration state as JSON -->
+<script type="application/json" id="rawConfigJson">
+{{.ConfigJSON}}
+</script>
 {{end}}
 
 {{define "scripts"}}
 <script>
-  const textarea = document.getElementById('configYaml');
-  // Tab key inserts 2 spaces
-  textarea.addEventListener('keydown', function(e) {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const start = this.selectionStart;
-      const end = this.selectionEnd;
-      this.value = this.value.substring(0, start) + '  ' + this.value.substring(end);
-      this.selectionStart = this.selectionEnd = start + 2;
+  let state = {
+    users: [],
+    hosts: {},
+    categories: []
+  };
+
+  const rawJsonEl = document.getElementById('rawConfigJson');
+  if (rawJsonEl && rawJsonEl.textContent.trim()) {
+    try {
+      const parsed = JSON.parse(rawJsonEl.textContent.trim());
+      if (parsed) {
+        state.users = parsed.users || [];
+        state.hosts = parsed.hosts || {};
+        state.categories = parsed.categories || [];
+      }
+    } catch(e) {
+      console.warn('Failed to parse initial config JSON:', e);
     }
-  });
+  }
+
+  // Handle Tab Switching
+  function switchTab(tab) {
+    const tabs = ['categories', 'hosts', 'users', 'yaml'];
+    tabs.forEach(t => {
+      const btn = document.getElementById('tabBtn' + t.charAt(0).toUpperCase() + t.slice(1));
+      const content = document.getElementById('tabContent' + t.charAt(0).toUpperCase() + t.slice(1));
+      if (btn && content) {
+        if (t === tab) {
+          btn.classList.add('active');
+          content.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+          content.classList.remove('active');
+        }
+      }
+    });
+
+    const modeInput = document.getElementById('configMode');
+    if (tab === 'yaml') {
+      modeInput.value = 'yaml';
+      // Sync visual changes to YAML editor
+      syncStateToYaml();
+    } else {
+      modeInput.value = 'gui';
+    }
+  }
+
+  // Render All Sections
+  function renderAll() {
+    renderCategories();
+    renderHosts();
+    renderUsers();
+    updateHostSelects();
+  }
+
+  // Render Categories & Buttons
+  function renderCategories() {
+    const container = document.getElementById('categoriesContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!state.categories || state.categories.length === 0) {
+      container.innerHTML = '<div class="empty-state" style="padding: 2.5rem 1rem;"><p>{{.T.no_categories}}</p></div>';
+      return;
+    }
+
+    state.categories.forEach((cat, cIdx) => {
+      const block = document.createElement('div');
+      block.className = 'category-block';
+
+      const header = document.createElement('div');
+      header.className = 'category-block-header';
+
+      const titleWrap = document.createElement('div');
+      const title = document.createElement('div');
+      title.className = 'category-block-title';
+      title.textContent = cat.name;
+
+      if (cat.host) {
+        const hostChip = document.createElement('span');
+        hostChip.className = 'badge-chip';
+        hostChip.style.marginInlineStart = '0.5rem';
+        hostChip.textContent = 'host: ' + cat.host;
+        title.appendChild(hostChip);
+      }
+
+      titleWrap.appendChild(title);
+
+      if (cat.description) {
+        const desc = document.createElement('div');
+        desc.className = 'category-block-desc';
+        desc.textContent = cat.description;
+        titleWrap.appendChild(desc);
+      }
+      header.appendChild(titleWrap);
+
+      const actions = document.createElement('div');
+      actions.className = 'config-card-actions';
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn-action-icon';
+      addBtn.innerHTML = '+ {{.T.add_button}}';
+      addBtn.onclick = () => openAddButtonModal(cIdx);
+      actions.appendChild(addBtn);
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'btn-action-icon';
+      editBtn.textContent = '{{.T.edit}}';
+      editBtn.onclick = () => openEditCategoryModal(cIdx);
+      actions.appendChild(editBtn);
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn-action-icon danger';
+      delBtn.textContent = '{{.T.delete}}';
+      delBtn.onclick = () => confirmDelete('category', cIdx, cat.name);
+      actions.appendChild(delBtn);
+
+      header.appendChild(actions);
+      block.appendChild(header);
+
+      // Buttons list
+      const btnList = document.createElement('div');
+      if (!cat.buttons || cat.buttons.length === 0) {
+        btnList.innerHTML = '<div style="font-size: 0.85rem; color: var(--text-muted); padding: 0.5rem 0;">{{.T.no_buttons_in_category}}</div>';
+      } else {
+        cat.buttons.forEach((btn, bIdx) => {
+          const item = document.createElement('div');
+          item.className = 'button-list-item';
+
+          const info = document.createElement('div');
+          info.style.display = 'flex';
+          info.style.alignItems = 'center';
+          info.style.gap = '0.5rem';
+          info.style.flexWrap = 'wrap';
+
+          const dot = document.createElement('span');
+          dot.className = 'btn-pill-style';
+          let dotColor = '#6366f1'; // primary
+          if (btn.style === 'success') dotColor = '#10b981';
+          if (btn.style === 'warning' || btn.warning) dotColor = '#f59e0b';
+          if (btn.style === 'danger' || btn.danger) dotColor = '#ef4444';
+          if (btn.style === 'secondary') dotColor = '#64748b';
+          dot.style.background = dotColor;
+          info.appendChild(dot);
+
+          const name = document.createElement('span');
+          name.style.fontWeight = '600';
+          name.textContent = btn.name || btn.label;
+          info.appendChild(name);
+
+          const targetHost = btn.host || cat.host;
+          if (targetHost) {
+            const hBadge = document.createElement('span');
+            hBadge.className = 'badge-chip';
+            hBadge.textContent = targetHost;
+            info.appendChild(hBadge);
+          }
+
+          if (btn.confirm || btn.danger || btn.warning) {
+            const confBadge = document.createElement('span');
+            confBadge.className = 'badge-chip';
+            confBadge.textContent = 'confirm';
+            info.appendChild(confBadge);
+          }
+
+          if (btn.stdin) {
+            const stdinBadge = document.createElement('span');
+            stdinBadge.className = 'badge-chip';
+            stdinBadge.textContent = 'stdin';
+            info.appendChild(stdinBadge);
+          }
+
+          const cmdCode = document.createElement('code');
+          cmdCode.textContent = btn.cmd ? (btn.cmd.length > 40 ? btn.cmd.substring(0, 37) + '...' : btn.cmd) : '';
+          info.appendChild(cmdCode);
+
+          item.appendChild(info);
+
+          const bActions = document.createElement('div');
+          bActions.className = 'config-card-actions';
+
+          const bEdit = document.createElement('button');
+          bEdit.type = 'button';
+          bEdit.className = 'btn-action-icon';
+          bEdit.textContent = '{{.T.edit}}';
+          bEdit.onclick = () => openEditButtonModal(cIdx, bIdx);
+          bActions.appendChild(bEdit);
+
+          const bDel = document.createElement('button');
+          bDel.type = 'button';
+          bDel.className = 'btn-action-icon danger';
+          bDel.textContent = '{{.T.delete}}';
+          bDel.onclick = () => confirmDelete('button', {cIdx, bIdx}, btn.name || btn.label);
+          bActions.appendChild(bDel);
+
+          item.appendChild(bActions);
+          btnList.appendChild(item);
+        });
+      }
+      block.appendChild(btnList);
+      container.appendChild(block);
+    });
+  }
+
+  // Render Hosts
+  function renderHosts() {
+    const container = document.getElementById('hostsContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const hostEntries = Object.entries(state.hosts || {});
+    if (hostEntries.length === 0) {
+      container.innerHTML = '<div class="empty-state" style="padding: 2.5rem 1rem;"><p>{{.T.no_hosts}}</p></div>';
+      return;
+    }
+
+    hostEntries.forEach(([key, h]) => {
+      const card = document.createElement('div');
+      card.className = 'config-item-card';
+
+      const header = document.createElement('div');
+      header.className = 'config-card-header';
+
+      const titleWrap = document.createElement('div');
+      const title = document.createElement('div');
+      title.className = 'section-toolbar-title';
+      title.style.fontSize = '1.05rem';
+      title.textContent = h.name ? (h.name + ' (' + key + ')') : key;
+      titleWrap.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'config-card-meta';
+      meta.innerHTML = `
+        <span class="badge-chip">${(h.user || 'root')}@${h.host}:${h.port || 22}</span>
+        ${h.key ? `<span class="badge-chip">key: ${h.key}</span>` : '<span class="badge-chip">password</span>'}
+        ${h.pty ? '<span class="badge-chip" style="color: #38bdf8;">pty</span>' : ''}
+        ${h.legacy_ciphers ? '<span class="badge-chip" style="color: #fbbf24;">legacy_ciphers</span>' : ''}
+      `;
+      titleWrap.appendChild(meta);
+      header.appendChild(titleWrap);
+
+      const actions = document.createElement('div');
+      actions.className = 'config-card-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'btn-action-icon';
+      editBtn.textContent = '{{.T.edit}}';
+      editBtn.onclick = () => openEditHostModal(key);
+      actions.appendChild(editBtn);
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn-action-icon danger';
+      delBtn.textContent = '{{.T.delete}}';
+      delBtn.onclick = () => confirmDelete('host', key, h.name || key);
+      actions.appendChild(delBtn);
+
+      header.appendChild(actions);
+      card.appendChild(header);
+      container.appendChild(card);
+    });
+  }
+
+  // Render Users
+  function renderUsers() {
+    const container = document.getElementById('usersContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    (state.users || []).forEach((u, idx) => {
+      const card = document.createElement('div');
+      card.className = 'config-item-card';
+
+      const header = document.createElement('div');
+      header.className = 'config-card-header';
+
+      const titleWrap = document.createElement('div');
+      const title = document.createElement('div');
+      title.className = 'section-toolbar-title';
+      title.style.fontSize = '1.05rem';
+      title.style.display = 'flex';
+      title.style.alignItems = 'center';
+      title.style.gap = '0.6rem';
+
+      const uName = u.user || u.username;
+      title.textContent = uName;
+
+      const roleBadge = document.createElement('span');
+      const isAdm = (u.role === 'admin');
+      roleBadge.className = 'badge-role ' + (isAdm ? 'admin' : 'operator');
+      roleBadge.textContent = u.role || 'admin';
+      title.appendChild(roleBadge);
+      titleWrap.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'config-card-meta';
+      const hasHash = (u.pass && (u.pass.startsWith('$2a$') || u.pass.startsWith('$2b$')));
+      meta.textContent = hasHash ? 'Password: (bcrypt hashed)' : 'Password: (configured)';
+      titleWrap.appendChild(meta);
+      header.appendChild(titleWrap);
+
+      const actions = document.createElement('div');
+      actions.className = 'config-card-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'btn-action-icon';
+      editBtn.textContent = '{{.T.edit}}';
+      editBtn.onclick = () => openEditUserModal(idx);
+      actions.appendChild(editBtn);
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn-action-icon danger';
+      delBtn.textContent = '{{.T.delete}}';
+      delBtn.onclick = () => confirmDelete('user', idx, uName);
+      actions.appendChild(delBtn);
+
+      header.appendChild(actions);
+      card.appendChild(header);
+      container.appendChild(card);
+    });
+  }
+
+  function updateHostSelects() {
+    const hostKeys = Object.keys(state.hosts || {});
+    
+    // Category host select
+    const catSelect = document.getElementById('selectCategoryHost');
+    if (catSelect) {
+      catSelect.innerHTML = '<option value="">-- None / Select Host --</option>';
+      hostKeys.forEach(k => {
+        const opt = document.createElement('option');
+        opt.value = k;
+        opt.textContent = state.hosts[k].name ? `${state.hosts[k].name} (${k})` : k;
+        catSelect.appendChild(opt);
+      });
+    }
+
+    // Button host select
+    const btnSelect = document.getElementById('selectButtonHost');
+    if (btnSelect) {
+      btnSelect.innerHTML = '<option value="">{{.T.inherit_default}}</option>';
+      hostKeys.forEach(k => {
+        const opt = document.createElement('option');
+        opt.value = k;
+        opt.textContent = state.hosts[k].name ? `${state.hosts[k].name} (${k})` : k;
+        btnSelect.appendChild(opt);
+      });
+    }
+  }
+
+  // User Modal Functions
+  function openAddUserModal() {
+    document.getElementById('dlgUserTitle').textContent = '{{.T.add_user}}';
+    document.getElementById('userEditIndex').value = '-1';
+    document.getElementById('inputUserName').value = '';
+    document.getElementById('inputUserName').disabled = false;
+    document.getElementById('inputUserPass').value = '';
+    document.getElementById('inputUserPass').required = true;
+    document.getElementById('inputUserPass').placeholder = 'Enter password';
+    document.getElementById('selectUserRole').value = 'operator';
+    document.getElementById('dlgUser').showModal();
+  }
+
+  function openEditUserModal(idx) {
+    const u = state.users[idx];
+    if (!u) return;
+    document.getElementById('dlgUserTitle').textContent = '{{.T.edit}} ' + (u.user || u.username);
+    document.getElementById('userEditIndex').value = idx;
+    document.getElementById('inputUserName').value = u.user || u.username;
+    document.getElementById('inputUserName').disabled = false;
+    document.getElementById('inputUserPass').value = '';
+    document.getElementById('inputUserPass').required = false;
+    document.getElementById('inputUserPass').placeholder = 'Leave blank to keep current password';
+    document.getElementById('selectUserRole').value = u.role || 'operator';
+    document.getElementById('dlgUser').showModal();
+  }
+
+  function saveUserModal() {
+    const idx = parseInt(document.getElementById('userEditIndex').value, 10);
+    const uName = document.getElementById('inputUserName').value.trim();
+    const uPass = document.getElementById('inputUserPass').value;
+    const uRole = document.getElementById('selectUserRole').value;
+
+    if (!uName) return;
+
+    if (idx === -1) {
+      // Add
+      state.users.push({
+        user: uName,
+        pass: uPass,
+        role: uRole
+      });
+    } else {
+      // Edit
+      state.users[idx].user = uName;
+      state.users[idx].role = uRole;
+      if (uPass) {
+        state.users[idx].pass = uPass;
+      }
+    }
+
+    document.getElementById('dlgUser').close();
+    renderUsers();
+  }
+
+  // Host Modal Functions
+  function toggleHostAuthFields() {
+    const method = document.getElementById('selectHostAuthMethod').value;
+    const keyGroup = document.getElementById('hostKeyGroup');
+    const passGroup = document.getElementById('hostPassGroup');
+    if (method === 'key') {
+      keyGroup.style.display = 'flex';
+      passGroup.style.display = 'none';
+    } else {
+      keyGroup.style.display = 'none';
+      passGroup.style.display = 'flex';
+    }
+  }
+
+  function openAddHostModal() {
+    document.getElementById('dlgHostTitle').textContent = '{{.T.add_host}}';
+    document.getElementById('hostEditKey').value = '';
+    document.getElementById('inputHostKey').value = '';
+    document.getElementById('inputHostKey').disabled = false;
+    document.getElementById('inputHostName').value = '';
+    document.getElementById('inputHostAddress').value = '';
+    document.getElementById('inputHostPort').value = '22';
+    document.getElementById('inputHostUser').value = 'root';
+    document.getElementById('selectHostAuthMethod').value = 'key';
+    document.getElementById('inputHostKeyPath').value = './keys/id_ed25519';
+    document.getElementById('inputHostPass').value = '';
+    document.getElementById('checkHostPTY').checked = false;
+    document.getElementById('checkHostLegacy').checked = false;
+    toggleHostAuthFields();
+    document.getElementById('dlgHost').showModal();
+  }
+
+  function openEditHostModal(key) {
+    const h = state.hosts[key];
+    if (!h) return;
+    document.getElementById('dlgHostTitle').textContent = '{{.T.edit}} ' + (h.name || key);
+    document.getElementById('hostEditKey').value = key;
+    document.getElementById('inputHostKey').value = key;
+    document.getElementById('inputHostKey').disabled = true;
+    document.getElementById('inputHostName').value = h.name || '';
+    document.getElementById('inputHostAddress').value = h.host || '';
+    document.getElementById('inputHostPort').value = h.port || 22;
+    document.getElementById('inputHostUser').value = h.user || 'root';
+    if (h.key) {
+      document.getElementById('selectHostAuthMethod').value = 'key';
+      document.getElementById('inputHostKeyPath').value = h.key;
+      document.getElementById('inputHostPass').value = '';
+    } else {
+      document.getElementById('selectHostAuthMethod').value = 'pass';
+      document.getElementById('inputHostPass').value = h.pass || '';
+      document.getElementById('inputHostKeyPath').value = '';
+    }
+    document.getElementById('checkHostPTY').checked = !!h.pty;
+    document.getElementById('checkHostLegacy').checked = !!h.legacy_ciphers;
+    toggleHostAuthFields();
+    document.getElementById('dlgHost').showModal();
+  }
+
+  function saveHostModal() {
+    const editKey = document.getElementById('hostEditKey').value;
+    const key = (editKey || document.getElementById('inputHostKey').value.trim());
+    if (!key) return;
+
+    const hostData = {
+      name: document.getElementById('inputHostName').value.trim(),
+      host: document.getElementById('inputHostAddress').value.trim(),
+      port: parseInt(document.getElementById('inputHostPort').value, 10) || 22,
+      user: document.getElementById('inputHostUser').value.trim(),
+      pty: document.getElementById('checkHostPTY').checked,
+      legacy_ciphers: document.getElementById('checkHostLegacy').checked
+    };
+
+    const method = document.getElementById('selectHostAuthMethod').value;
+    if (method === 'key') {
+      hostData.key = document.getElementById('inputHostKeyPath').value.trim();
+    } else {
+      hostData.pass = document.getElementById('inputHostPass').value;
+    }
+
+    if (!state.hosts) state.hosts = {};
+    state.hosts[key] = hostData;
+
+    document.getElementById('dlgHost').close();
+    renderHosts();
+    updateHostSelects();
+    renderCategories();
+  }
+
+  // Category Modal Functions
+  function openAddCategoryModal() {
+    updateHostSelects();
+    document.getElementById('dlgCategoryTitle').textContent = '{{.T.add_category}}';
+    document.getElementById('categoryEditIndex').value = '-1';
+    document.getElementById('inputCategoryName').value = '';
+    document.getElementById('inputCategoryDesc').value = '';
+    document.getElementById('selectCategoryHost').value = '';
+    document.getElementById('dlgCategory').showModal();
+  }
+
+  function openEditCategoryModal(idx) {
+    updateHostSelects();
+    const cat = state.categories[idx];
+    if (!cat) return;
+    document.getElementById('dlgCategoryTitle').textContent = '{{.T.edit}} ' + cat.name;
+    document.getElementById('categoryEditIndex').value = idx;
+    document.getElementById('inputCategoryName').value = cat.name || '';
+    document.getElementById('inputCategoryDesc').value = cat.description || '';
+    document.getElementById('selectCategoryHost').value = cat.host || '';
+    document.getElementById('dlgCategory').showModal();
+  }
+
+  function saveCategoryModal() {
+    const idx = parseInt(document.getElementById('categoryEditIndex').value, 10);
+    const name = document.getElementById('inputCategoryName').value.trim();
+    const desc = document.getElementById('inputCategoryDesc').value.trim();
+    const host = document.getElementById('selectCategoryHost').value;
+
+    if (!name) return;
+
+    if (idx === -1) {
+      state.categories.push({
+        name: name,
+        description: desc,
+        host: host,
+        buttons: []
+      });
+    } else {
+      state.categories[idx].name = name;
+      state.categories[idx].description = desc;
+      state.categories[idx].host = host;
+    }
+
+    document.getElementById('dlgCategory').close();
+    renderCategories();
+  }
+
+  // Button Modal Functions
+  function handleButtonStyleChange() {
+    const style = document.getElementById('selectButtonStyle').value;
+    const confirmCheck = document.getElementById('checkButtonConfirm');
+    if (style === 'danger' || style === 'warning') {
+      confirmCheck.checked = true;
+    }
+  }
+
+  function openAddButtonModal(cIdx) {
+    updateHostSelects();
+    document.getElementById('dlgButtonTitle').textContent = '{{.T.add_button}}';
+    document.getElementById('buttonCatIndex').value = cIdx;
+    document.getElementById('buttonEditIndex').value = '-1';
+    document.getElementById('inputButtonLabel').value = '';
+    document.getElementById('inputButtonCommand').value = '';
+    document.getElementById('selectButtonHost').value = '';
+    document.getElementById('selectButtonStyle').value = 'primary';
+    document.getElementById('inputButtonTimeout').value = '';
+    document.getElementById('inputButtonStdin').value = '';
+    document.getElementById('checkButtonConfirm').checked = false;
+    document.getElementById('dlgButton').showModal();
+  }
+
+  function openEditButtonModal(cIdx, bIdx) {
+    updateHostSelects();
+    const btn = state.categories[cIdx].buttons[bIdx];
+    if (!btn) return;
+    document.getElementById('dlgButtonTitle').textContent = '{{.T.edit}} ' + (btn.name || btn.label);
+    document.getElementById('buttonCatIndex').value = cIdx;
+    document.getElementById('buttonEditIndex').value = bIdx;
+    document.getElementById('inputButtonLabel').value = btn.name || btn.label || '';
+    document.getElementById('inputButtonCommand').value = btn.cmd || btn.command || '';
+    document.getElementById('selectButtonHost').value = btn.host || '';
+    document.getElementById('selectButtonStyle').value = btn.style || (btn.danger ? 'danger' : (btn.warning ? 'warning' : 'primary'));
+    document.getElementById('inputButtonTimeout').value = btn.timeout || '';
+    document.getElementById('inputButtonStdin').value = btn.stdin || '';
+    document.getElementById('checkButtonConfirm').checked = !!(btn.confirm || btn.danger || btn.warning);
+    document.getElementById('dlgButton').showModal();
+  }
+
+  function saveButtonModal() {
+    const cIdx = parseInt(document.getElementById('buttonCatIndex').value, 10);
+    const bIdx = parseInt(document.getElementById('buttonEditIndex').value, 10);
+    const label = document.getElementById('inputButtonLabel').value.trim();
+    const cmd = document.getElementById('inputButtonCommand').value.trim();
+    const host = document.getElementById('selectButtonHost').value;
+    const style = document.getElementById('selectButtonStyle').value;
+    const timeout = parseInt(document.getElementById('inputButtonTimeout').value, 10) || 0;
+    const stdin = document.getElementById('inputButtonStdin').value;
+    const confirm = document.getElementById('checkButtonConfirm').checked;
+
+    if (!label || !cmd) return;
+
+    const btnObj = {
+      name: label,
+      cmd: cmd,
+      host: host || undefined,
+      style: style,
+      danger: (style === 'danger'),
+      warning: (style === 'warning'),
+      confirm: confirm,
+      timeout: timeout > 0 ? timeout : undefined,
+      stdin: stdin ? stdin : undefined
+    };
+
+    if (!state.categories[cIdx].buttons) {
+      state.categories[cIdx].buttons = [];
+    }
+
+    if (bIdx === -1) {
+      state.categories[cIdx].buttons.push(btnObj);
+    } else {
+      state.categories[cIdx].buttons[bIdx] = btnObj;
+    }
+
+    document.getElementById('dlgButton').close();
+    renderCategories();
+  }
+
+  // Deletion logic
+  let pendingDelete = null;
+  function confirmDelete(type, target, displayName) {
+    pendingDelete = { type, target };
+    const textEl = document.getElementById('dlgDeleteText');
+    if (type === 'user') {
+      textEl.textContent = '{{.T.confirm_delete_user}} "' + displayName + '"?';
+    } else if (type === 'host') {
+      textEl.textContent = '{{.T.confirm_delete_host}} "' + displayName + '"?';
+    } else if (type === 'category') {
+      textEl.textContent = '{{.T.confirm_delete_category}} "' + displayName + '"?';
+    } else if (type === 'button') {
+      textEl.textContent = '{{.T.confirm_delete_button}} "' + displayName + '"?';
+    }
+    document.getElementById('dlgDelete').showModal();
+  }
+
+  document.getElementById('btnConfirmDelete').onclick = function() {
+    if (!pendingDelete) return;
+    const { type, target } = pendingDelete;
+    if (type === 'user') {
+      state.users.splice(target, 1);
+      renderUsers();
+    } else if (type === 'host') {
+      delete state.hosts[target];
+      renderHosts();
+      updateHostSelects();
+      renderCategories();
+    } else if (type === 'category') {
+      state.categories.splice(target, 1);
+      renderCategories();
+    } else if (type === 'button') {
+      state.categories[target.cIdx].buttons.splice(target.bIdx, 1);
+      renderCategories();
+    }
+    pendingDelete = null;
+    document.getElementById('dlgDelete').close();
+  };
+
+  // Convert state to clean YAML
+  function generateYamlFromState(s) {
+    let y = "# SSH Buttons Configuration\n# Visit /docs for configuration documentation\n\n";
+
+    // 1. Users
+    y += "users:\n";
+    (s.users || []).forEach(u => {
+      y += `  - user: "${u.user || u.username}"\n`;
+      if (u.pass) y += `    pass: "${u.pass}"\n`;
+      y += `    role: "${u.role || 'operator'}"\n\n`;
+    });
+
+    // 2. Hosts
+    y += "hosts:\n";
+    for (const [k, h] of Object.entries(s.hosts || {})) {
+      y += `  ${k}:\n`;
+      if (h.name) y += `    name: "${h.name}"\n`;
+      y += `    host: "${h.host}"\n`;
+      if (h.port && h.port !== 22) y += `    port: ${h.port}\n`;
+      y += `    user: "${h.user || 'root'}"\n`;
+      if (h.key) y += `    key: "${h.key}"\n`;
+      if (h.pass) y += `    pass: "${h.pass}"\n`;
+      if (h.pty) y += `    pty: true\n`;
+      if (h.legacy_ciphers) y += `    legacy_ciphers: true\n`;
+      y += "\n";
+    }
+
+    // 3. Categories
+    y += "categories:\n";
+    (s.categories || []).forEach(c => {
+      y += `  - name: "${c.name}"\n`;
+      if (c.description) y += `    description: "${c.description}"\n`;
+      if (c.host) y += `    host: "${c.host}"\n`;
+      if (c.buttons && c.buttons.length > 0) {
+        y += `    buttons:\n`;
+        c.buttons.forEach(b => {
+          y += `      - name: "${b.name || b.label}"\n`;
+          const cmd = b.cmd || b.command || '';
+          if (cmd.includes('\n')) {
+            y += `        cmd: |\n`;
+            cmd.split('\n').forEach(line => {
+              y += `          ${line}\n`;
+            });
+          } else {
+            y += `        cmd: "${cmd}"\n`;
+          }
+          if (b.host) y += `        host: "${b.host}"\n`;
+          if (b.style && b.style !== 'primary') y += `        style: "${b.style}"\n`;
+          if (b.danger) y += `        danger: true\n`;
+          if (b.warning) y += `        warning: true\n`;
+          if (b.confirm && !b.danger && !b.warning) y += `        confirm: true\n`;
+          if (b.timeout && b.timeout > 0) y += `        timeout: ${b.timeout}\n`;
+          if (b.stdin) y += `        stdin: ${JSON.stringify(b.stdin)}\n`;
+          y += "\n";
+        });
+      }
+    });
+
+    return y;
+  }
+
+  function syncStateToYaml() {
+    const yamlEl = document.getElementById('configYaml');
+    if (yamlEl) {
+      yamlEl.value = generateYamlFromState(state);
+    }
+  }
+
+  function submitConfigForm() {
+    const mode = document.getElementById('configMode').value;
+    if (mode === 'gui') {
+      document.getElementById('configJson').value = JSON.stringify(state);
+      syncStateToYaml();
+    }
+    document.getElementById('configForm').submit();
+  }
+
+  // Textarea Tab key support
+  const textarea = document.getElementById('configYaml');
+  if (textarea) {
+    textarea.addEventListener('keydown', function(e) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = this.selectionStart;
+        const end = this.selectionEnd;
+        this.value = this.value.substring(0, start) + '  ' + this.value.substring(end);
+        this.selectionStart = this.selectionEnd = start + 2;
+      }
+    });
+  }
+
+  // Initial render
+  renderAll();
 </script>
 {{end}}

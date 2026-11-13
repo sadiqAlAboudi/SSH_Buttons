@@ -576,3 +576,164 @@ func TestDashboardLastResultRendering(t *testing.T) {
 		}
 	}
 }
+
+func TestGUIConfigTabsRendered(t *testing.T) {
+	server, _, _ := setupTestServer(t)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	sessionToken := server.auth.GenerateSessionToken("admin")
+
+	req := httptest.NewRequest("GET", "/config", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /config, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	expectedElements := []string{
+		`id="tabBtnCategories"`,
+		`id="tabBtnHosts"`,
+		`id="tabBtnUsers"`,
+		`id="tabBtnYaml"`,
+		`id="tabContentCategories"`,
+		`id="tabContentHosts"`,
+		`id="tabContentUsers"`,
+		`id="tabContentYaml"`,
+		`id="dlgUser"`,
+		`id="dlgHost"`,
+		`id="dlgCategory"`,
+		`id="dlgButton"`,
+		`id="dlgDelete"`,
+		`id="rawConfigJson"`,
+		`id="configMode"`,
+		`id="configJson"`,
+	}
+
+	for _, elem := range expectedElements {
+		if !strings.Contains(body, elem) {
+			t.Errorf("Config page missing expected GUI element %q", elem)
+		}
+	}
+}
+
+func TestGUIConfigSaveStructured_AddUserAndHost(t *testing.T) {
+	server, cm, _ := setupTestServer(t)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	sessionToken := server.auth.GenerateSessionToken("admin")
+	csrfToken := server.auth.GenerateCSRFToken("admin")
+
+	// Prepare structured JSON payload adding an operator user and a new host
+	guiPayload := `{
+		"users": [
+			{"user": "admin", "pass": "adminpass", "role": "admin"},
+			{"user": "tech_lead", "pass": "securePlainPass123", "role": "operator"}
+		],
+		"hosts": {
+			"test_host": {"name": "Test Host", "host": "127.0.0.1", "port": 22, "user": "root"},
+			"cloud_db": {"name": "Database Cluster", "host": "10.0.1.5", "port": 2222, "user": "postgres", "key": "./keys/id_rsa"}
+		},
+		"categories": [
+			{
+				"name": "Database Ops",
+				"description": "Routine DB health checks",
+				"host": "cloud_db",
+				"buttons": [
+					{"name": "Check DB Connections", "cmd": "select count(*) from pg_stat_activity;", "style": "primary"}
+				]
+			}
+		]
+	}`
+
+	form := url.Values{}
+	form.Set("csrf_token", csrfToken)
+	form.Set("config_mode", "gui")
+	form.Set("config_json", guiPayload)
+
+	reqSave := httptest.NewRequest("POST", "/config", strings.NewReader(form.Encode()))
+	reqSave.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqSave.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	rrSave := httptest.NewRecorder()
+	mux.ServeHTTP(rrSave, reqSave)
+
+	if rrSave.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect after saving structured GUI config, got %d. Body: %s", rrSave.Code, rrSave.Body.String())
+	}
+
+	// Verify the updated in-memory configuration
+	cfg := cm.Get()
+	if len(cfg.Users) != 2 {
+		t.Fatalf("Expected 2 users, got %d", len(cfg.Users))
+	}
+
+	newU, ok := cfg.UsersByUsername["tech_lead"]
+	if !ok {
+		t.Fatalf("Expected user 'tech_lead' to exist in config")
+	}
+	if newU.Role != "operator" {
+		t.Errorf("Expected role 'operator', got %q", newU.Role)
+	}
+	// Verify that password was automatically hashed with bcrypt
+	if !strings.HasPrefix(newU.Password, "$2a$") {
+		t.Errorf("Expected password to be bcrypt hashed, got %q", newU.Password)
+	}
+	// Verify user can successfully authenticate with plain text password
+	if !server.auth.CheckCredentials("tech_lead", "securePlainPass123") {
+		t.Errorf("Expected checkCredentials to succeed with plain password against bcrypt hash")
+	}
+
+	// Verify host and category button
+	if _, ok := cfg.Hosts["cloud_db"]; !ok {
+		t.Errorf("Expected host 'cloud_db' in config")
+	}
+	if len(cfg.Categories) != 1 || cfg.Categories[0].Name != "Database Ops" {
+		t.Errorf("Expected category 'Database Ops', got %+v", cfg.Categories)
+	}
+	if len(cfg.Categories[0].Buttons) != 1 || cfg.Categories[0].Buttons[0].Label != "Check DB Connections" {
+		t.Errorf("Expected button 'Check DB Connections', got %+v", cfg.Categories[0].Buttons)
+	}
+}
+
+func TestGUIConfigSaveStructured_AdminSafeguard(t *testing.T) {
+	server, _, _ := setupTestServer(t)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	sessionToken := server.auth.GenerateSessionToken("admin")
+	csrfToken := server.auth.GenerateCSRFToken("admin")
+
+	// Payload with only an operator and NO admin account
+	noAdminPayload := `{
+		"users": [
+			{"user": "operator1", "pass": "somepass", "role": "operator"}
+		],
+		"hosts": {},
+		"categories": []
+	}`
+
+	form := url.Values{}
+	form.Set("csrf_token", csrfToken)
+	form.Set("config_mode", "gui")
+	form.Set("config_json", noAdminPayload)
+
+	reqSave := httptest.NewRequest("POST", "/config", strings.NewReader(form.Encode()))
+	reqSave.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqSave.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: sessionToken})
+	rrSave := httptest.NewRecorder()
+	mux.ServeHTTP(rrSave, reqSave)
+
+	if rrSave.Code != http.StatusBadRequest {
+		t.Fatalf("Expected 400 Bad Request when saving without admin user, got %d", rrSave.Code)
+	}
+
+	body := rrSave.Body.String()
+	if !strings.Contains(body, "admin") {
+		t.Errorf("Expected error banner mentioning 'admin', got body: %s", body)
+	}
+}
+

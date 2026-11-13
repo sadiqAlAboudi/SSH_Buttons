@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -120,12 +122,79 @@ func (cm *ConfigManager) ReadRawConfigFile() (string, error) {
 	return string(data), nil
 }
 
+// GetRawConfig parses the configuration file into RawRoot for structured editing.
+func (cm *ConfigManager) GetRawConfig() (RawRoot, error) {
+	cm.mu.RLock()
+	filePath := cm.path
+	cm.mu.RUnlock()
+
+	var raw RawRoot
+	if filePath == "" {
+		return raw, errors.New("no config file path defined")
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return raw, fmt.Errorf("failed to read config file %q: %w", filePath, err)
+	}
+
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return raw, fmt.Errorf("failed to parse yaml config: %w", err)
+	}
+	return raw, nil
+}
+
+// SaveStructuredConfig validates and serializes a RawRoot struct to YAML, hashes any plaintext passwords, and persists it.
+func (cm *ConfigManager) SaveStructuredConfig(raw RawRoot) error {
+	// 1. Validate users: must have at least one user with admin role
+	hasAdmin := false
+	for _, u := range raw.Users {
+		uname := u.User
+		if uname == "" {
+			uname = u.Username
+		}
+		if uname == "" {
+			return errors.New("every user must have a username")
+		}
+		if u.Role == "admin" {
+			hasAdmin = true
+		}
+	}
+	if !hasAdmin {
+		return errors.New("at least one user must have the 'admin' role")
+	}
+
+	// 2. Hash any new plaintext passwords with bcrypt
+	for i := range raw.Users {
+		pass := raw.Users[i].Pass
+		if pass == "" {
+			pass = raw.Users[i].Password
+		}
+		if pass != "" && !strings.HasPrefix(pass, "$2a$") && !strings.HasPrefix(pass, "$2b$") && !strings.HasPrefix(pass, "$2y$") {
+			hashed, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
+			if err != nil {
+				return fmt.Errorf("failed to hash password for user %q: %w", raw.Users[i].User, err)
+			}
+			raw.Users[i].Pass = string(hashed)
+			raw.Users[i].Password = ""
+		}
+	}
+
+	// 3. Serialize cleanly to YAML
+	out, err := yaml.Marshal(&raw)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config to YAML: %w", err)
+	}
+
+	return cm.SaveConfigFile(out)
+}
+
 func (cm *ConfigManager) SaveConfigFile(content []byte) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	// 1. In-memory validation
-	var raw rawRoot
+	var raw RawRoot
 	if err := yaml.Unmarshal(content, &raw); err != nil {
 		return fmt.Errorf("YAML validation error: %w", err)
 	}
@@ -159,64 +228,64 @@ func (cm *ConfigManager) SaveConfigFile(content []byte) error {
 	return nil
 }
 
-// Internal raw unmarshaling types for clean YAML schema
-type rawUser struct {
-	User     string `yaml:"user"`
-	Username string `yaml:"username"`
-	Pass     string `yaml:"pass"`
-	Password string `yaml:"password"`
-	Role     string `yaml:"role"`
+// Raw unmarshaling and serialization types for GUI and YAML schema
+type RawUser struct {
+	User     string `yaml:"user" json:"user"`
+	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+	Pass     string `yaml:"pass" json:"pass"`
+	Password string `yaml:"password,omitempty" json:"password,omitempty"`
+	Role     string `yaml:"role" json:"role"`
 }
 
-type rawHost struct {
-	Name           string `yaml:"name"`
-	Host           string `yaml:"host"`
-	Address        string `yaml:"address"`
-	Port           int    `yaml:"port"`
-	User           string `yaml:"user"`
-	Pass           string `yaml:"pass"`
-	Password       string `yaml:"password"`
-	Key            string `yaml:"key"`
-	KeyPath        string `yaml:"key_path"`
-	KeyPassphrase  string `yaml:"key_passphrase"`
-	Insecure       *bool  `yaml:"insecure"`
-	KnownHostsPath string `yaml:"known_hosts"`
-	PTY            bool   `yaml:"pty"`
-	LegacyCiphers  bool   `yaml:"legacy_ciphers"`
+type RawHost struct {
+	Name           string `yaml:"name" json:"name"`
+	Host           string `yaml:"host" json:"host"`
+	Address        string `yaml:"address,omitempty" json:"address,omitempty"`
+	Port           int    `yaml:"port,omitempty" json:"port,omitempty"`
+	User           string `yaml:"user" json:"user"`
+	Pass           string `yaml:"pass,omitempty" json:"pass,omitempty"`
+	Password       string `yaml:"password,omitempty" json:"password,omitempty"`
+	Key            string `yaml:"key,omitempty" json:"key,omitempty"`
+	KeyPath        string `yaml:"key_path,omitempty" json:"key_path,omitempty"`
+	KeyPassphrase  string `yaml:"key_passphrase,omitempty" json:"key_passphrase,omitempty"`
+	Insecure       *bool  `yaml:"insecure,omitempty" json:"insecure,omitempty"`
+	KnownHostsPath string `yaml:"known_hosts,omitempty" json:"known_hosts,omitempty"`
+	PTY            bool   `yaml:"pty,omitempty" json:"pty,omitempty"`
+	LegacyCiphers  bool   `yaml:"legacy_ciphers,omitempty" json:"legacy_ciphers,omitempty"`
 }
 
-type rawButton struct {
-	ID          string `yaml:"id"`
-	Name        string `yaml:"name"`
-	Label       string `yaml:"label"`
-	Cmd         string `yaml:"cmd"`
-	Command     string `yaml:"command"`
-	Host        string `yaml:"host"`
-	Style       string `yaml:"style"`
-	Confirm     bool   `yaml:"confirm"`
-	Danger      bool   `yaml:"danger"`
-	Warning     bool   `yaml:"warning"`
-	Timeout     int    `yaml:"timeout"`
-	Description string `yaml:"description"`
-	PTY         *bool  `yaml:"pty"`
-	Stdin       string `yaml:"stdin"`
-	Input       string `yaml:"input"`
+type RawButton struct {
+	ID          string `yaml:"id,omitempty" json:"id,omitempty"`
+	Name        string `yaml:"name" json:"name"`
+	Label       string `yaml:"label,omitempty" json:"label,omitempty"`
+	Cmd         string `yaml:"cmd" json:"cmd"`
+	Command     string `yaml:"command,omitempty" json:"command,omitempty"`
+	Host        string `yaml:"host,omitempty" json:"host,omitempty"`
+	Style       string `yaml:"style,omitempty" json:"style,omitempty"`
+	Confirm     bool   `yaml:"confirm,omitempty" json:"confirm,omitempty"`
+	Danger      bool   `yaml:"danger,omitempty" json:"danger,omitempty"`
+	Warning     bool   `yaml:"warning,omitempty" json:"warning,omitempty"`
+	Timeout     int    `yaml:"timeout,omitempty" json:"timeout,omitempty"`
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+	PTY         *bool  `yaml:"pty,omitempty" json:"pty,omitempty"`
+	Stdin       string `yaml:"stdin,omitempty" json:"stdin,omitempty"`
+	Input       string `yaml:"input,omitempty" json:"input,omitempty"`
 }
 
-type rawCategory struct {
-	Name        string      `yaml:"name"`
-	Description string      `yaml:"description"`
-	Host        string      `yaml:"host"`
-	PTY         *bool       `yaml:"pty"`
-	Buttons     []rawButton `yaml:"buttons"`
+type RawCategory struct {
+	Name        string      `yaml:"name" json:"name"`
+	Description string      `yaml:"description,omitempty" json:"description,omitempty"`
+	Host        string      `yaml:"host,omitempty" json:"host,omitempty"`
+	PTY         *bool       `yaml:"pty,omitempty" json:"pty,omitempty"`
+	Buttons     []RawButton `yaml:"buttons" json:"buttons"`
 }
 
-type rawRoot struct {
-	Server     ServerConfig       `yaml:"server,omitempty"`
-	Users      []rawUser          `yaml:"users"`
-	Hosts      map[string]rawHost `yaml:"hosts"`
-	Categories []rawCategory      `yaml:"categories"`
-	Buttons    []rawButton        `yaml:"buttons"` // optional top-level buttons
+type RawRoot struct {
+	Server     ServerConfig       `yaml:"server,omitempty" json:"server,omitempty"`
+	Users      []RawUser          `yaml:"users" json:"users"`
+	Hosts      map[string]RawHost `yaml:"hosts" json:"hosts"`
+	Categories []RawCategory      `yaml:"categories" json:"categories"`
+	Buttons    []RawButton        `yaml:"buttons,omitempty" json:"buttons,omitempty"`
 }
 
 func loadConfigFromFile(path string) (*AppConfig, error) {
@@ -238,7 +307,7 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 		return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
 	}
 
-	var raw rawRoot
+	var raw RawRoot
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse yaml config: %w", err)
 	}
@@ -391,7 +460,7 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 	categoryMap := make(map[string][]ButtonConfig)
 	var categoryOrder []string
 
-	recordButton := func(catName, defaultHost string, catPTY *bool, rb rawButton) {
+	recordButton := func(catName, defaultHost string, catPTY *bool, rb RawButton) {
 		label := rb.Name
 		if label == "" {
 			label = rb.Label

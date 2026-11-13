@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -260,8 +261,17 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		content = "# Error reading config file: " + err.Error()
 	}
 
+	rawConfig, err := s.configMgr.GetRawConfig()
+	var configJSON string
+	if err == nil {
+		if b, jErr := json.Marshal(rawConfig); jErr == nil {
+			configJSON = string(b)
+		}
+	}
+
 	data := struct {
 		YAML       string
+		ConfigJSON string
 		Error      string
 		CSRFToken  string
 		Lang       string
@@ -271,6 +281,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		T          map[string]string
 	}{
 		YAML:       content,
+		ConfigJSON: configJSON,
 		Error:      "",
 		CSRFToken:  s.auth.GenerateCSRFToken(user),
 		Lang:       lang,
@@ -297,17 +308,32 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	configMode := r.FormValue("config_mode")
+	configJSON := r.FormValue("config_json")
 	rawYaml := r.FormValue("yaml")
 	if rawYaml == "" {
 		rawYaml = r.FormValue("config_yaml")
 	}
 	lang := s.i18n.ResolveLanguage(r)
+	otherLang, otherLabel := i18n.GetOtherLang(lang)
 
-	if err := s.configMgr.SaveConfigFile([]byte(rawYaml)); err != nil {
+	var saveErr error
+	if configMode == "gui" && strings.TrimSpace(configJSON) != "" {
+		var raw config.RawRoot
+		if err := json.Unmarshal([]byte(configJSON), &raw); err != nil {
+			saveErr = fmt.Errorf("invalid JSON configuration: %w", err)
+		} else {
+			saveErr = s.configMgr.SaveStructuredConfig(raw)
+		}
+	} else {
+		saveErr = s.configMgr.SaveConfigFile([]byte(rawYaml))
+	}
+
+	if saveErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		otherLang, otherLabel := i18n.GetOtherLang(lang)
 		data := struct {
 			YAML       string
+			ConfigJSON string
 			Error      string
 			CSRFToken  string
 			Lang       string
@@ -317,7 +343,8 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 			T          map[string]string
 		}{
 			YAML:       rawYaml,
-			Error:      fmt.Sprintf("%s: %v", s.i18n.T(lang, "yaml_syntax_error"), err),
+			ConfigJSON: configJSON,
+			Error:      fmt.Sprintf("%s: %v", s.i18n.T(lang, "config_save_error"), saveErr),
 			CSRFToken:  s.auth.GenerateCSRFToken(user),
 			Lang:       lang,
 			Dir:        i18n.GetDir(lang),
