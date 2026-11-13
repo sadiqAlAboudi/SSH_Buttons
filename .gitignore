@@ -1,0 +1,15 @@
+# Binaries
+/ssh_buttons
+*.exe
+*.test
+
+# Keys and local overrides
+/keys/
+*.pem
+*.key
+id_*
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/

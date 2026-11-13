@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Grounded Matte Basalt Canvas -->
+  <rect width="512" height="512" rx="96" fill="#090a0c" />
+  <rect x="8" y="8" width="496" height="496" rx="88" fill="none" stroke="#22262b" stroke-width="3" />
+
+  <!-- Tactile Hardware Terminal / Button Surface -->
+  <rect x="76" y="86" width="360" height="340" rx="20" fill="#131518" stroke="#272b32" stroke-width="2" />
+
+  <!-- Hardware Status LEDs / Screw Rivets -->
+  <circle cx="116" cy="126" r="6" fill="#10b981" />
+  <circle cx="140" cy="126" r="6" fill="#3f444e" />
+  <circle cx="164" cy="126" r="6" fill="#3f444e" />
+  <line x1="76" y1="156" x2="436" y2="156" stroke="#1f2329" stroke-width="2" />
+
+  <!-- Crisp Terminal Prompt Glyph (Monochrome Zinc) -->
+  <path d="M 128 214 L 180 256 L 128 298" fill="none" stroke="#f4f4f5" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+  <line x1="204" y1="298" x2="270" y2="298" stroke="#a1a1aa" stroke-width="14" stroke-linecap="round" />
+
+  <!-- Physical Switch Button Inset at Bottom -->
+  <rect x="116" y="342" width="280" height="48" rx="8" fill="#1c1f24" stroke="#2b3038" stroke-width="2" />
+  <rect x="122" y="348" width="80" height="36" rx="6" fill="#2d333b" />
+  <circle cx="162" cy="366" r="4" fill="#10b981" />
+  <line x1="220" y1="366" x2="380" y2="366" stroke="#2e343d" stroke-width="3" stroke-linecap="round" />
+</svg>

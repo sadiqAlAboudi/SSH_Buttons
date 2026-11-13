@@ -1,0 +1,21 @@
+services:
+  ssh_buttons:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ssh_buttons:latest
+    container_name: ssh_buttons
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      # Optional environment overrides (take precedence over config.yml)
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=adminpassword
+      - SESSION_SECRET=change-this-to-a-secure-random-key-in-production
+    volumes:
+      # Mount configuration file read-only
+      - ./config.yml:/app/config.yml:ro
+      # Mount SSH keys directory read-only
+      - ./keys:/app/keys:ro

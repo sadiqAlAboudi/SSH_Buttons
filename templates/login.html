@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="{{.Lang}}" dir="{{.Dir}}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#090a0c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>{{.T.sign_in}} - {{.T.app_title}}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    :root {
+      --bg: #090a0c;
+      --surface: #121417;
+      --surface-elevated: #181b20;
+      --border: #22262b;
+      --border-focus: #525866;
+      --text: #f4f4f5;
+      --text-muted: #8b929e;
+      --text-dim: #555b66;
+      --btn-bg: #f4f4f5;
+      --btn-text: #090a0c;
+      --danger-border: #4d1d24;
+      --danger-bg: #1c0f12;
+      --danger-text: #f87171;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      position: relative;
+      -webkit-font-smoothing: antialiased;
+    }
+    .top-bar {
+      position: absolute;
+      top: 1rem;
+      right: 1.25rem;
+    }
+    [dir="rtl"] .top-bar {
+      right: auto;
+      left: 1.25rem;
+    }
+    .btn-lang {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      text-decoration: none;
+      min-height: 38px;
+      transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+    }
+    .btn-lang:hover {
+      color: var(--text);
+      border-color: var(--border-focus);
+      background-color: var(--surface-elevated);
+    }
+    .btn-lang:active {
+      transform: translateY(1px);
+    }
+    .login-card {
+      width: 100%;
+      max-width: 380px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2.25rem 1.75rem;
+    }
+    .brand-header {
+      text-align: center;
+      margin-bottom: 1.75rem;
+    }
+    .brand-logo {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 0.85rem;
+      display: block;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .brand-title {
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .brand-sub {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+    .error-alert {
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
+      color: var(--danger-text);
+      padding: 0.65rem 0.85rem;
+      border-radius: 8px;
+      font-size: 0.8125rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .form-group {
+      margin-bottom: 1.15rem;
+    }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+      text-align: start;
+    }
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      background: #0d0f12;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 0.85rem;
+      font-size: 0.95rem;
+      color: var(--text);
+      outline: none;
+      min-height: 44px;
+      transition: border-color 0.15s ease;
+      text-align: start;
+    }
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      border-color: #f4f4f5;
+    }
+    .btn-submit {
+      width: 100%;
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 44px;
+      margin-top: 0.5rem;
+      transition: opacity 0.15s ease, transform 0.1s ease;
+      touch-action: manipulation;
+    }
+    .btn-submit:hover {
+      opacity: 0.92;
+    }
+    .btn-submit:active {
+      transform: translateY(1px);
+    }
+    .footer-note {
+      text-align: center;
+      margin-top: 1.75rem;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <a href="/set-lang?lang={{.OtherLang}}" class="btn-lang" title="Language">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="2" y1="12" x2="22" y2="12"></line>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+      </svg>
+      <span>{{.OtherLabel}}</span>
+    </a>
+  </div>
+
+  <main class="login-card">
+    <div class="brand-header">
+      <img src="/static/icon.svg" alt="Logo" class="brand-logo">
+      <h1 class="brand-title">{{.T.app_title}}</h1>
+      <p class="brand-sub">{{.T.app_tagline}}</p>
+    </div>
+
+    {{if .Error}}
+    <div class="error-alert" role="alert">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <span>{{.Error}}</span>
+    </div>
+    {{end}}
+
+    <form method="POST" action="/login">
+      <div class="form-group">
+        <label for="username">{{.T.username}}</label>
+        <input type="text" id="username" name="username" required autofocus autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="password">{{.T.password}}</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn-submit">{{.T.sign_in}}</button>
+    </form>
+
+    <div class="footer-note">
+      <span>{{.T.footer_tagline}}</span>
+    </div>
+  </main>
+</body>
+</html>

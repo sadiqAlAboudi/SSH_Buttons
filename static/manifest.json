@@ -1,0 +1,17 @@
+{
+  "name": "SSH Buttons",
+  "short_name": "SSHButtons",
+  "description": "Lightweight, responsive SSH command dashboard for remote infrastructure management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0f19",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
