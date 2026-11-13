@@ -36,15 +36,19 @@ users:
 # Define reusable machines and network devices.
 #
 # Available fields per host:
-#   - name:     (Optional) Friendly display name. Defaults to the map key.
-#   - host:     (Required) IP address or hostname of the remote machine.
-#   - port:     (Optional) SSH port. Defaults to 22.
-#   - user:     (Required) Remote SSH login username.
-#   - key:      (Optional) Path to private key file. Relative paths resolve
-#               relative to this config file (e.g. "./keys/id_ed25519").
-#   - pass:     (Optional) SSH login password (used if key is absent or as fallback).
-#   - insecure: (Optional) Set false to enforce known_hosts verification.
-#               Defaults to true for internal subnets and homelabs.
+#   - name:           (Optional) Friendly display name. Defaults to the map key.
+#   - host:           (Required) IP address or hostname of the remote machine.
+#   - port:           (Optional) SSH port. Defaults to 22.
+#   - user:           (Required) Remote SSH login username.
+#   - key:            (Optional) Path to private key file. Relative paths resolve
+#                     relative to this config file (e.g. "./keys/id_ed25519").
+#   - pass:           (Optional) SSH login password (used if key is absent or as fallback).
+#   - insecure:       (Optional) Set false to enforce known_hosts verification.
+#                     Defaults to true for internal subnets and homelabs.
+#   - pty:            (Optional) Set true to force interactive pseudo-terminal shell mode.
+#                     REQUIRED for Cisco IOS, switches, and appliances that reject non-interactive 'exec'.
+#   - legacy_ciphers: (Optional) Set true to enable older Diffie-Hellman (group1, group14),
+#                     AES-CBC, 3DES, and ssh-rsa algorithms for older switches and RouterOS v6.
 hosts:
   # Example A: Ubuntu / Debian Linux Server with SSH Private Key
   srv_linux:
@@ -53,19 +57,22 @@ hosts:
     user: "root"
     key: "./keys/id_ed25519"
 
-  # Example B: MikroTik RouterOS with Password
+  # Example B: MikroTik RouterOS Gateway (v6 or v7)
   router_mikrotik:
-    name: "Core Gateway"
+    name: "Core Gateway (MikroTik)"
     host: "192.168.1.1"
     user: "admin"
     pass: "RouterPassword"
+    legacy_ciphers: true # Enable if running older RouterOS v6
 
-  # Example C: Cisco / Edge Network Switch with Password
+  # Example C: Cisco Catalyst Switch / IOS-XE Device
   switch_cisco:
-    name: "Access Switch 24P"
+    name: "Access Switch (Cisco 2960/3750)"
     host: "192.168.1.2"
     user: "cisco"
     pass: "CiscoEnablePassword"
+    pty: true            # Cisco IOS rejects 'exec' channels; requires PTY shell
+    legacy_ciphers: true # Older Cisco switches require SHA-1 DH and ssh-rsa
 
 # ------------------------------------------------------------------------------
 # 3. CATEGORIES & BUTTONS
@@ -80,6 +87,9 @@ hosts:
 #   - name:     (Required) Label displayed on the button.
 #   - cmd:      (Required) Shell command executed over SSH on the target host.
 #   - host:     (Optional) Overrides category host for this specific button.
+#   - stdin:    (Optional) Automated confirmation input sent into standard input
+#               (e.g. "y\n" for MikroTik /system reboot, or "\n" for Cisco reload [confirm]).
+#   - pty:      (Optional) Force or disable PTY shell mode for this specific button.
 #   - timeout:  (Optional) Execution timeout in seconds. Defaults to server timeout (15s).
 #   - id:       (Optional) Unique button identifier. If omitted, a clean slug
 #               is auto-generated from category and button names (e.g. "linux-ops-reboot").
@@ -114,22 +124,36 @@ categories:
 
   - name: "Network Gear"
     buttons:
-      - name: "Reboot MikroTik"
-        host: "router_mikrotik" # Explicit host override
-        cmd: "/system reboot"
-        danger: true
+      - name: "Check MikroTik IPs"
+        host: "router_mikrotik"
+        cmd: "/ip address print"
+        style: "primary"
 
       - name: "Backup MikroTik"
         host: "router_mikrotik"
         cmd: "/system backup save name=auto-backup"
         style: "success"
 
+      - name: "Reboot MikroTik"
+        host: "router_mikrotik"
+        cmd: "/system reboot"
+        stdin: "y\n" # Automatically answers 'Reboot, yes? [y/N]:'
+        danger: true
+
+      - name: "Show Cisco Interfaces"
+        host: "switch_cisco"
+        cmd: |
+          terminal length 0
+          show ip interface brief
+        style: "primary"
+
       - name: "Save Cisco Config"
         host: "switch_cisco"
         cmd: "write memory"
         style: "success"
 
-      - name: "Reload Switch"
+      - name: "Reload Cisco Switch"
         host: "switch_cisco"
         cmd: "reload"
+        stdin: "\n" # Automatically answers 'Proceed with reload? [confirm]'
         danger: true

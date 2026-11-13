@@ -36,6 +36,8 @@ type HostConfig struct {
 	KeyPassphrase         string
 	InsecureIgnoreHostKey *bool
 	KnownHostsPath        string
+	PTY                   bool // Force pseudo-terminal shell mode (essential for Cisco IOS / switches)
+	LegacyCiphers         bool // Enable legacy ciphers (DH group1/14, 3DES, AES-CBC, ssh-rsa)
 }
 
 type ButtonConfig struct {
@@ -48,6 +50,8 @@ type ButtonConfig struct {
 	Style       string // primary, danger, warning, success, secondary
 	Confirm     bool
 	Timeout     int // seconds
+	PTY         bool
+	Stdin       string // Optional input string to feed into session stdin (e.g. "y\n" or "\n")
 }
 
 type NormalizedCategory struct {
@@ -171,6 +175,8 @@ type rawHost struct {
 	KeyPassphrase  string `yaml:"key_passphrase"`
 	Insecure       *bool  `yaml:"insecure"`
 	KnownHostsPath string `yaml:"known_hosts"`
+	PTY            bool   `yaml:"pty"`
+	LegacyCiphers  bool   `yaml:"legacy_ciphers"`
 }
 
 type rawButton struct {
@@ -186,11 +192,15 @@ type rawButton struct {
 	Warning     bool   `yaml:"warning"`
 	Timeout     int    `yaml:"timeout"`
 	Description string `yaml:"description"`
+	PTY         *bool  `yaml:"pty"`
+	Stdin       string `yaml:"stdin"`
+	Input       string `yaml:"input"`
 }
 
 type rawCategory struct {
 	Name    string      `yaml:"name"`
 	Host    string      `yaml:"host"`
+	PTY     *bool       `yaml:"pty"`
 	Buttons []rawButton `yaml:"buttons"`
 }
 
@@ -355,6 +365,8 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 		}
 		h.KeyPassphrase = rh.KeyPassphrase
 		h.KnownHostsPath = rh.KnownHostsPath
+		h.PTY = rh.PTY
+		h.LegacyCiphers = rh.LegacyCiphers
 
 		// Default insecure host key = true for easy homelab usage
 		if rh.Insecure != nil {
@@ -372,7 +384,7 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 	categoryMap := make(map[string][]ButtonConfig)
 	var categoryOrder []string
 
-	recordButton := func(catName, defaultHost string, rb rawButton) {
+	recordButton := func(catName, defaultHost string, catPTY *bool, rb rawButton) {
 		label := rb.Name
 		if label == "" {
 			label = rb.Label
@@ -417,6 +429,21 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 			btnID = slugify(catName + "_" + label)
 		}
 
+		// Resolve PTY mode: button override > category override > host setting > default false
+		pty := false
+		if rb.PTY != nil {
+			pty = *rb.PTY
+		} else if catPTY != nil {
+			pty = *catPTY
+		} else if h, ok := normalizedHosts[targetHost]; ok {
+			pty = h.PTY
+		}
+
+		stdin := rb.Stdin
+		if stdin == "" {
+			stdin = rb.Input
+		}
+
 		btn := ButtonConfig{
 			ID:          btnID,
 			Label:       label,
@@ -427,6 +454,8 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 			Style:       style,
 			Confirm:     confirm,
 			Timeout:     timeout,
+			PTY:         pty,
+			Stdin:       stdin,
 		}
 
 		buttonsByID[btn.ID] = btn
@@ -443,13 +472,13 @@ func loadConfigFromFile(path string) (*AppConfig, error) {
 			catName = "General"
 		}
 		for _, btn := range cat.Buttons {
-			recordButton(catName, cat.Host, btn)
+			recordButton(catName, cat.Host, cat.PTY, btn)
 		}
 	}
 
 	// Process top-level buttons if any
 	for _, btn := range raw.Buttons {
-		recordButton("General", "", btn)
+		recordButton("General", "", nil, btn)
 	}
 
 	var categories []NormalizedCategory

@@ -13,3 +13,6 @@ id_*
 .DS_Store
 .idea/
 .vscode/
+
+# config
+config.yml

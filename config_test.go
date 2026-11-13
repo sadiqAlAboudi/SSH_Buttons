@@ -210,3 +210,91 @@ users:
 		t.Errorf("Expected reloaded user superadmin, got %v", super)
 	}
 }
+
+func TestConfigPTYAndNetworkDeviceFields(t *testing.T) {
+	yamlContent := `
+hosts:
+  cisco_core:
+    name: "Cisco Catalyst 3750"
+    host: "10.1.1.1"
+    user: "admin"
+    pass: "ciscopass"
+    pty: true
+    legacy_ciphers: true
+
+  mikrotik_gw:
+    name: "MikroTik Gateway"
+    host: "10.1.1.254"
+    user: "admin"
+    pass: "mtpass"
+
+categories:
+  - name: "Network Switches"
+    host: "cisco_core"
+    buttons:
+      - name: "Show Interfaces"
+        cmd: "show ip int brief"
+      - name: "Direct Exec"
+        cmd: "show clock"
+        pty: false
+
+  - name: "MikroTik Ops"
+    host: "mikrotik_gw"
+    buttons:
+      - name: "Reboot Router"
+        cmd: "/system reboot"
+        stdin: "y\n"
+        danger: true
+`
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("Failed to write temp config: %v", err)
+	}
+
+	cm, err := NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	cfg := cm.Get()
+
+	// Verify Host fields
+	cisco, ok := cfg.Hosts["cisco_core"]
+	if !ok {
+		t.Fatalf("Host cisco_core not found")
+	}
+	if !cisco.PTY {
+		t.Errorf("Expected cisco_core to have PTY=true")
+	}
+	if !cisco.LegacyCiphers {
+		t.Errorf("Expected cisco_core to have LegacyCiphers=true")
+	}
+
+	// Verify Button inherited PTY
+	btnShow, ok := cfg.ButtonsByID["network-switches-show-interfaces"]
+	if !ok {
+		t.Fatalf("Button network-switches-show-interfaces not found")
+	}
+	if !btnShow.PTY {
+		t.Errorf("Expected button to inherit PTY=true from host, got false")
+	}
+
+	// Verify Button explicit PTY override to false
+	btnClock, ok := cfg.ButtonsByID["network-switches-direct-exec"]
+	if !ok {
+		t.Fatalf("Button network-switches-direct-exec not found")
+	}
+	if btnClock.PTY {
+		t.Errorf("Expected button explicit override PTY=false, got true")
+	}
+
+	// Verify MikroTik Stdin
+	btnReboot, ok := cfg.ButtonsByID["mikrotik-ops-reboot-router"]
+	if !ok {
+		t.Fatalf("Button mikrotik-ops-reboot-router not found")
+	}
+	if btnReboot.Stdin != "y\n" {
+		t.Errorf("Expected stdin 'y\\n', got %q", btnReboot.Stdin)
+	}
+}
