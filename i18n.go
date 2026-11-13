@@ -59,6 +59,7 @@ func NewI18nManager() *I18nManager {
 				"access_denied":        "Access denied: Administrator privileges required",
 				"yaml_syntax_error":    "YAML syntax error",
 				"editor_hint":          "Direct YAML edits will be validated and applied immediately upon saving.",
+				"rate_limit_exceeded":  "Too many failed login attempts. Please wait a minute before trying again.",
 			},
 			LangAR: {
 				"app_title":            "أزرار SSH",
@@ -67,6 +68,7 @@ func NewI18nManager() *I18nManager {
 				"username":             "اسم المستخدم",
 				"password":             "كلمة المرور",
 				"invalid_credentials":  "اسم المستخدم أو كلمة المرور غير صحيحة",
+				"rate_limit_exceeded":  "محاولات تسجيل دخول خاطئة كثيرة جداً. يرجى الانتظار لمدة دقيقة والمحاولة لاحقاً.",
 				"footer_tagline":       "مشغل أوامر SSH ذاتي الاحتواء",
 				"reload_config":        "إعادة تحميل الإعدادات",
 				"logout":               "تسجيل الخروج",

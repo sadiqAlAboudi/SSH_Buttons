@@ -252,6 +252,7 @@
 
   <main class="container">
     <form id="configForm" method="POST" action="/config" style="display: flex; flex-direction: column; flex: 1;">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <div class="editor-card">
         <div class="editor-top-bar">
           <span class="editor-file-badge">config.yml</span>

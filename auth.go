@@ -6,9 +6,11 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -19,12 +21,96 @@ const (
 	sessionDuration   = 24 * time.Hour
 )
 
+// LoginRateLimiter limits failed login attempts by client IP to prevent brute-forcing
+type LoginRateLimiter struct {
+	mu          sync.Mutex
+	attempts    map[string][]time.Time
+	maxAttempts int
+	window      time.Duration
+}
+
+func NewLoginRateLimiter(maxAttempts int, window time.Duration) *LoginRateLimiter {
+	return &LoginRateLimiter{
+		attempts:    make(map[string][]time.Time),
+		maxAttempts: maxAttempts,
+		window:      window,
+	}
+}
+
+// Allow returns true if the IP has not exceeded maxAttempts in window
+func (l *LoginRateLimiter) Allow(ip string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-l.window)
+
+	var recent []time.Time
+	for _, t := range l.attempts[ip] {
+		if t.After(cutoff) {
+			recent = append(recent, t)
+		}
+	}
+	l.attempts[ip] = recent
+
+	return len(recent) < l.maxAttempts
+}
+
+// RecordFailure notes a failed attempt
+func (l *LoginRateLimiter) RecordFailure(ip string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.attempts[ip] = append(l.attempts[ip], time.Now())
+}
+
+// RecordSuccess clears history on successful authentication
+func (l *LoginRateLimiter) RecordSuccess(ip string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.attempts, ip)
+}
+
 type AuthService struct {
 	configMgr *ConfigManager
+	limiter   *LoginRateLimiter
 }
 
 func NewAuthService(cm *ConfigManager) *AuthService {
-	return &AuthService{configMgr: cm}
+	return &AuthService{
+		configMgr: cm,
+		limiter:   NewLoginRateLimiter(5, 1*time.Minute),
+	}
+}
+
+// AllowLogin checks rate limiting for client IP
+func (a *AuthService) AllowLogin(ip string) bool {
+	return a.limiter.Allow(ip)
+}
+
+// RecordLoginFailure tracks a failed login for client IP
+func (a *AuthService) RecordLoginFailure(ip string) {
+	a.limiter.RecordFailure(ip)
+}
+
+// RecordLoginSuccess clears failed login records on success
+func (a *AuthService) RecordLoginSuccess(ip string) {
+	a.limiter.RecordSuccess(ip)
+}
+
+// GetClientIP extracts remote IP considering reverse proxy headers
+func GetClientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
 }
 
 // CheckCredentials validates username and password against configured users.
@@ -116,14 +202,77 @@ func (a *AuthService) ValidateSessionToken(token string) (string, bool) {
 	return username, true
 }
 
-func (a *AuthService) SetSessionCookie(w http.ResponseWriter, username string) {
+// GenerateCSRFToken creates a stateless session-bound CSRF token for the authenticated user
+func (a *AuthService) GenerateCSRFToken(username string) string {
+	if username == "" {
+		return ""
+	}
+	cfg := a.configMgr.Get()
+	epoch := time.Now().Unix() / 86400
+	payload := fmt.Sprintf("csrf:%s:%d", username, epoch)
+
+	mac := hmac.New(sha256.New, []byte(cfg.Server.SessionSecret))
+	mac.Write([]byte(payload))
+	signature := mac.Sum(nil)
+
+	token := fmt.Sprintf("%s:%s", payload, base64.RawURLEncoding.EncodeToString(signature))
+	return base64.RawURLEncoding.EncodeToString([]byte(token))
+}
+
+// ValidateCSRFToken verifies that the CSRF token matches the authenticated user and server secret
+func (a *AuthService) ValidateCSRFToken(username, token string) bool {
+	if username == "" || token == "" {
+		return false
+	}
+	rawBytes, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(string(rawBytes), ":")
+	if len(parts) != 4 || parts[0] != "csrf" {
+		return false
+	}
+	tokenUser := parts[1]
+	epochStr := parts[2]
+	sigBase64 := parts[3]
+
+	if tokenUser != username {
+		return false
+	}
+
+	tokenEpoch, err := strconv.ParseInt(epochStr, 10, 64)
+	if err != nil {
+		return false
+	}
+	currentEpoch := time.Now().Unix() / 86400
+	// Allow current epoch and previous day epoch for continuous sessions around midnight UTC
+	if tokenEpoch != currentEpoch && tokenEpoch != (currentEpoch-1) {
+		return false
+	}
+
+	cfg := a.configMgr.Get()
+	mac := hmac.New(sha256.New, []byte(cfg.Server.SessionSecret))
+	mac.Write([]byte(fmt.Sprintf("csrf:%s:%s", username, epochStr)))
+	expectedSig := mac.Sum(nil)
+
+	actualSig, err := base64.RawURLEncoding.DecodeString(sigBase64)
+	if err != nil {
+		return false
+	}
+
+	return hmac.Equal(expectedSig, actualSig)
+}
+
+func (a *AuthService) SetSessionCookie(w http.ResponseWriter, r *http.Request, username string) {
 	token := a.GenerateSessionToken(username)
+	isTLS := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(sessionDuration.Seconds()),
 		HttpOnly: true,
+		Secure:   isTLS,
 		SameSite: http.SameSiteLaxMode,
 	})
 }

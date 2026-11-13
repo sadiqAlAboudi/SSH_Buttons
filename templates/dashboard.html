@@ -592,6 +592,7 @@
 
         <!-- Reload Config Button (Admin only) -->
         <form method="POST" action="/reload" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <button type="submit" class="btn-header" title="{{.T.reload_config}}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
@@ -603,6 +604,7 @@
 
         <!-- Logout Button -->
         <form method="POST" action="/logout" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <button type="submit" class="btn-header" title="{{.T.logout}}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
@@ -685,6 +687,7 @@
           </div>
 
           <form method="POST" action="/run">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <input type="hidden" name="button_id" value="{{.ID}}">
             <button 
               type="{{if .Confirm}}button{{else}}submit{{end}}" 
@@ -729,6 +732,7 @@
     <div class="dlg-btns">
       <button type="button" class="btn-dlg-cancel" onclick="closeConfirmation()">{{.T.cancel}}</button>
       <form id="confirmForm" method="POST" action="/run" style="display:inline; width: 100%;">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <input type="hidden" name="button_id" id="confirmButtonId">
         <button type="submit" class="btn-dlg-submit" id="dialogSubmitBtn" style="width: 100%;">{{.T.proceed}}</button>
       </form>

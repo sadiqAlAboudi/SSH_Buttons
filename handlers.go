@@ -185,16 +185,43 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB body limit
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
 
-	username := strings.TrimSpace(r.FormValue("username"))
-	password := r.FormValue("password")
+	ip := GetClientIP(r)
 	lang := s.i18n.ResolveLanguage(r)
 
+	// Rate limiting: protect against brute-force attacks
+	if !s.auth.AllowLogin(ip) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		otherLang, otherLabel := GetOtherLang(lang)
+		data := struct {
+			Error      string
+			Lang       string
+			Dir        string
+			OtherLang  string
+			OtherLabel string
+			T          map[string]string
+		}{
+			Error:      s.i18n.T(lang, "rate_limit_exceeded"),
+			Lang:       lang,
+			Dir:        GetDir(lang),
+			OtherLang:  otherLang,
+			OtherLabel: otherLabel,
+			T:          s.i18n.GetTranslations(lang),
+		}
+		_ = s.loginTmpl.Execute(w, data)
+		return
+	}
+
+	username := strings.TrimSpace(r.FormValue("username"))
+	password := r.FormValue("password")
+
 	if !s.auth.CheckCredentials(username, password) {
+		s.auth.RecordLoginFailure(ip)
 		w.WriteHeader(http.StatusUnauthorized)
 		otherLang, otherLabel := GetOtherLang(lang)
 		data := struct {
@@ -216,11 +243,27 @@ func (s *Server) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.auth.SetSessionCookie(w, username)
+	s.auth.RecordLoginSuccess(ip)
+	s.auth.SetSessionCookie(w, r, username)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	user := s.getSessionUser(r)
+	if user != "" {
+		csrfToken := r.FormValue("csrf_token")
+		if !s.auth.ValidateCSRFToken(user, csrfToken) {
+			http.Error(w, "Forbidden: Invalid or missing CSRF token", http.StatusForbidden)
+			return
+		}
+	}
+
 	s.auth.ClearSessionCookie(w)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
@@ -249,6 +292,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Role       string
 		IsAdmin    bool
 		HostCount  int
+		CSRFToken  string
 		Lang       string
 		Dir        string
 		OtherLang  string
@@ -262,6 +306,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Role:       role,
 		IsAdmin:    role == "admin",
 		HostCount:  len(cfg.Hosts),
+		CSRFToken:  s.auth.GenerateCSRFToken(user),
 		Lang:       lang,
 		Dir:        GetDir(lang),
 		OtherLang:  otherLang,
@@ -273,6 +318,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	user := s.getSessionUser(r)
 	lang := s.i18n.ResolveLanguage(r)
 	otherLang, otherLabel := GetOtherLang(lang)
 
@@ -284,6 +330,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Content    string
 		Error      string
+		CSRFToken  string
 		Lang       string
 		Dir        string
 		OtherLang  string
@@ -292,6 +339,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}{
 		Content:    content,
 		Error:      "",
+		CSRFToken:  s.auth.GenerateCSRFToken(user),
 		Lang:       lang,
 		Dir:        GetDir(lang),
 		OtherLang:  otherLang,
@@ -303,13 +351,20 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad Request", http.StatusBadRequest)
+		http.Error(w, "Bad Request: Request body exceeds maximum permitted size", http.StatusBadRequest)
+		return
+	}
+
+	user := s.getSessionUser(r)
+	csrfToken := r.FormValue("csrf_token")
+	if !s.auth.ValidateCSRFToken(user, csrfToken) {
+		http.Error(w, "Forbidden: Invalid or missing CSRF token", http.StatusForbidden)
 		return
 	}
 
 	rawYaml := r.FormValue("config_yaml")
-	user := s.getSessionUser(r)
 	lang := s.i18n.ResolveLanguage(r)
 
 	if err := s.configMgr.SaveConfigFile([]byte(rawYaml)); err != nil {
@@ -318,6 +373,7 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		data := struct {
 			Content    string
 			Error      string
+			CSRFToken  string
 			Lang       string
 			Dir        string
 			OtherLang  string
@@ -326,6 +382,7 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		}{
 			Content:    rawYaml,
 			Error:      fmt.Sprintf("%s: %v", s.i18n.T(lang, "yaml_syntax_error"), err),
+			CSRFToken:  s.auth.GenerateCSRFToken(user),
 			Lang:       lang,
 			Dir:        GetDir(lang),
 			OtherLang:  otherLang,
@@ -341,13 +398,20 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
 
-	buttonID := strings.TrimSpace(r.FormValue("button_id"))
 	user := s.getSessionUser(r)
+	csrfToken := r.FormValue("csrf_token")
+	if !s.auth.ValidateCSRFToken(user, csrfToken) {
+		http.Error(w, "Forbidden: Invalid or missing CSRF token", http.StatusForbidden)
+		return
+	}
+
+	buttonID := strings.TrimSpace(r.FormValue("button_id"))
 
 	cfg := s.configMgr.Get()
 	btn, exists := cfg.ButtonsByID[buttonID]
@@ -378,7 +442,19 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
 	user := s.getSessionUser(r)
+	csrfToken := r.FormValue("csrf_token")
+	if !s.auth.ValidateCSRFToken(user, csrfToken) {
+		http.Error(w, "Forbidden: Invalid or missing CSRF token", http.StatusForbidden)
+		return
+	}
+
 	lang := s.i18n.ResolveLanguage(r)
 	if err := s.configMgr.Reload(); err != nil {
 		s.store.SetFlash(user, fmt.Sprintf("%s: %v", s.i18n.T(lang, "config_reload_failed"), err))
@@ -417,4 +493,16 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	_, _ = io.Copy(w, file)
+}
+
+// SecurityHeadersMiddleware adds defensive HTTP security headers to all responses
+func SecurityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none';")
+		next.ServeHTTP(w, r)
+	})
 }
