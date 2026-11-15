@@ -6,15 +6,10 @@ services:
     image: ssh_buttons:latest
     container_name: ssh_buttons
     restart: unless-stopped
-    # Exposed for reverse proxies (Traefik, Nginx, Caddy, Cloudflare Tunnel, Docker networks)
-    expose:
-      - "${PORT:-8080}"
-    # To publish directly to a host port without reverse proxy, uncomment:
-    # ports:
-    #   - "${PORT:-8080}:${PORT:-8080}"
+    ports:
+      - "${PORT:-8010}:${PORT:-8010}"
     environment:
-      # Server infrastructure settings (configured here, NOT in config.yml)
-      - PORT=${PORT:-8080}
+      - PORT=${PORT:-8010}
       - SESSION_SECRET=change-this-to-a-secure-random-key-in-production
       - TIMEOUT=15
       # Optional: set ADMIN_USER & ADMIN_PASSWORD to inject/override an admin account at runtime
