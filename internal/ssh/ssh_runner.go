@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -82,7 +83,7 @@ func (r *SSHRunner) Execute(ctx context.Context, btn config.ButtonConfig) *Execu
 	}
 
 	// Connect with timeout
-	addr := net.JoinHostPort(host.Host, strconv.Itoa(host.Port))
+	addr := res.HostAddress
 	conn, err := net.DialTimeout("tcp", addr, time.Duration(btn.Timeout)*time.Second)
 	if err != nil {
 		res.Success = false
@@ -390,6 +391,20 @@ func buildSSHClientConfig(host config.HostConfig, timeout time.Duration) (*ssh.C
 			return nil, fmt.Errorf("failed to read known_hosts at %q: %w", host.KnownHostsPath, err)
 		}
 		hostKeyCallback = cb
+	} else if host.InsecureIgnoreHostKey != nil && !*host.InsecureIgnoreHostKey {
+		// Explicitly requested secure verification, but no known_hosts specified
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			defaultKnownHosts := filepath.Join(homeDir, ".ssh", "known_hosts")
+			if _, statErr := os.Stat(defaultKnownHosts); statErr == nil {
+				if cb, khErr := knownhosts.New(defaultKnownHosts); khErr == nil {
+					hostKeyCallback = cb
+				}
+			}
+		}
+		if hostKeyCallback == nil {
+			return nil, fmt.Errorf("host key verification enabled (insecure: false) for host %q, but no known_hosts file found (specify known_hosts)", host.Name)
+		}
 	} else {
 		// Default to insecure for ease of homelab use unless specified
 		hostKeyCallback = ssh.InsecureIgnoreHostKey()
@@ -446,14 +461,39 @@ func cleanPTYOutput(raw string) string {
 
 // isRebootCommand checks if command is meant to reboot, reload, or halt a server/device
 func isRebootCommand(cmd string) bool {
-	cmdLower := strings.ToLower(cmd)
-	return strings.Contains(cmdLower, "reboot") ||
-		strings.Contains(cmdLower, "shutdown") ||
-		strings.Contains(cmdLower, "poweroff") ||
-		strings.Contains(cmdLower, "reload") ||
-		strings.Contains(cmdLower, "init 0") ||
-		strings.Contains(cmdLower, "init 6") ||
-		strings.Contains(cmdLower, "halt")
+	cmdLower := strings.ToLower(strings.TrimSpace(cmd))
+	for _, rawLine := range strings.Split(cmdLower, "\n") {
+		for _, part := range strings.Split(rawLine, ";") {
+			for _, sub := range strings.Split(part, "&&") {
+				sub = strings.TrimSpace(sub)
+				if sub == "" {
+					continue
+				}
+				sub = strings.TrimPrefix(sub, "sudo ")
+				sub = strings.TrimSpace(sub)
+				fields := strings.Fields(sub)
+				if len(fields) == 0 {
+					continue
+				}
+				switch fields[0] {
+				case "reboot", "shutdown", "poweroff", "halt", "reload":
+					return true
+				case "init":
+					if len(fields) > 1 && (fields[1] == "0" || fields[1] == "6") {
+						return true
+					}
+				case "systemctl":
+					if len(fields) > 1 && (fields[1] == "reboot" || fields[1] == "poweroff" || fields[1] == "halt") {
+						return true
+					}
+				}
+				if sub == "/system reboot" || strings.HasPrefix(sub, "/system reboot ") {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // isGracefulDisconnect identifies errors caused by commands that immediately kill the SSH connection

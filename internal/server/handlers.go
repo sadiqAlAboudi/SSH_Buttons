@@ -253,20 +253,16 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rawConfig, err := s.configMgr.GetRawConfig()
-	var configJSON template.JS
+	configJSON := "{}"
 	if err == nil {
 		if b, jErr := json.Marshal(rawConfig); jErr == nil {
-			configJSON = template.JS(b)
-		} else {
-			configJSON = template.JS("{}")
+			configJSON = string(b)
 		}
-	} else {
-		configJSON = template.JS("{}")
 	}
 
 	data := struct {
 		YAML       string
-		ConfigJSON template.JS
+		ConfigJSON string
 		Error      string
 		CSRFToken  string
 		Lang       string
@@ -328,7 +324,7 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		data := struct {
 			YAML       string
-			ConfigJSON template.JS
+			ConfigJSON string
 			Error      string
 			CSRFToken  string
 			Lang       string
@@ -338,7 +334,7 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 			T          map[string]string
 		}{
 			YAML:       rawYaml,
-			ConfigJSON: template.JS(configJSON),
+			ConfigJSON: configJSON,
 			Error:      fmt.Sprintf("%s: %v", s.i18n.T(lang, "config_save_error"), saveErr),
 			CSRFToken:  s.auth.GenerateCSRFToken(user),
 			Lang:       lang,
@@ -455,5 +451,3 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	_, _ = io.Copy(w, file)
 }
-
-// SecurityHeadersMiddleware adds defensive HTTP security headers to all responses

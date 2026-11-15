@@ -383,14 +383,14 @@
 {{end}}
 
 {{define "scripts"}}
+<script type="application/json" id="configJsonData">{{.ConfigJSON}}</script>
 <script>
-  let state = {{.ConfigJSON}};
-  if (typeof state === 'string') {
-    try {
-      state = JSON.parse(state);
-    } catch(e) {
-      console.warn('Failed to parse config string:', e);
-    }
+  let state = {};
+  try {
+    const rawData = document.getElementById('configJsonData').textContent;
+    state = JSON.parse(rawData);
+  } catch(e) {
+    console.warn('Failed to parse config string:', e);
   }
   if (!state || typeof state !== 'object') {
     state = { users: [], hosts: {}, categories: [] };
@@ -1064,6 +1064,12 @@
     markDirty();
   };
 
+  // Helper to safely format string fields into valid YAML
+  function yamlStr(val) {
+    if (val === undefined || val === null) return '""';
+    return JSON.stringify(String(val));
+  }
+
   // Convert state to clean YAML
   function generateYamlFromState(s) {
     let y = "# SSH Buttons Configuration\n# Visit /docs for configuration documentation\n\n";
@@ -1071,21 +1077,21 @@
     // 1. Users
     y += "users:\n";
     (s.users || []).forEach(u => {
-      y += `  - user: "${u.user || u.username}"\n`;
-      if (u.pass) y += `    pass: "${u.pass}"\n`;
-      y += `    role: "${u.role || 'operator'}"\n\n`;
+      y += `  - user: ${yamlStr(u.user || u.username)}\n`;
+      if (u.pass) y += `    pass: ${yamlStr(u.pass)}\n`;
+      y += `    role: ${yamlStr(u.role || 'operator')}\n\n`;
     });
 
     // 2. Hosts
     y += "hosts:\n";
     for (const [k, h] of Object.entries(s.hosts || {})) {
       y += `  ${k}:\n`;
-      if (h.name) y += `    name: "${h.name}"\n`;
-      y += `    host: "${h.host}"\n`;
+      if (h.name) y += `    name: ${yamlStr(h.name)}\n`;
+      y += `    host: ${yamlStr(h.host)}\n`;
       if (h.port && h.port !== 22) y += `    port: ${h.port}\n`;
-      y += `    user: "${h.user || 'root'}"\n`;
-      if (h.key) y += `    key: "${h.key}"\n`;
-      if (h.pass) y += `    pass: "${h.pass}"\n`;
+      y += `    user: ${yamlStr(h.user || 'root')}\n`;
+      if (h.key) y += `    key: ${yamlStr(h.key)}\n`;
+      if (h.pass) y += `    pass: ${yamlStr(h.pass)}\n`;
       if (h.pty) y += `    pty: true\n`;
       if (h.legacy_ciphers) y += `    legacy_ciphers: true\n`;
       y += "\n";
@@ -1094,13 +1100,13 @@
     // 3. Categories
     y += "categories:\n";
     (s.categories || []).forEach(c => {
-      y += `  - name: "${c.name}"\n`;
-      if (c.description) y += `    description: "${c.description}"\n`;
-      if (c.host) y += `    host: "${c.host}"\n`;
+      y += `  - name: ${yamlStr(c.name)}\n`;
+      if (c.description) y += `    description: ${yamlStr(c.description)}\n`;
+      if (c.host) y += `    host: ${yamlStr(c.host)}\n`;
       if (c.buttons && c.buttons.length > 0) {
         y += `    buttons:\n`;
         c.buttons.forEach(b => {
-          y += `      - name: "${b.name || b.label}"\n`;
+          y += `      - name: ${yamlStr(b.name || b.label)}\n`;
           const cmd = b.cmd || b.command || '';
           if (cmd.includes('\n')) {
             y += `        cmd: |\n`;
@@ -1108,15 +1114,15 @@
               y += `          ${line}\n`;
             });
           } else {
-            y += `        cmd: "${cmd}"\n`;
+            y += `        cmd: ${yamlStr(cmd)}\n`;
           }
-          if (b.host) y += `        host: "${b.host}"\n`;
-          if (b.style && b.style !== 'primary') y += `        style: "${b.style}"\n`;
+          if (b.host) y += `        host: ${yamlStr(b.host)}\n`;
+          if (b.style && b.style !== 'primary') y += `        style: ${yamlStr(b.style)}\n`;
           if (b.danger) y += `        danger: true\n`;
           if (b.warning) y += `        warning: true\n`;
           if (b.confirm && !b.danger && !b.warning) y += `        confirm: true\n`;
           if (b.timeout && b.timeout > 0) y += `        timeout: ${b.timeout}\n`;
-          if (b.stdin) y += `        stdin: ${JSON.stringify(b.stdin)}\n`;
+          if (b.stdin) y += `        stdin: ${yamlStr(b.stdin)}\n`;
           y += "\n";
         });
       }

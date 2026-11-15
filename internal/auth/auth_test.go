@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"ssh_buttons/internal/config"
 
@@ -105,5 +106,31 @@ users:
 	guarded.ServeHTTP(rrAdmin, reqAdmin)
 	if rrAdmin.Code != http.StatusOK || !adminHandlerCalled {
 		t.Errorf("Expected 200 OK for admin accessing admin route, got %d (called=%v)", rrAdmin.Code, adminHandlerCalled)
+	}
+}
+
+func TestLoginRateLimiterMemoryCleanup(t *testing.T) {
+	// Limiter with short window
+	limiter := NewLoginRateLimiter(3, 10*time.Millisecond)
+	ip := "192.0.2.1"
+
+	limiter.RecordFailure(ip)
+	limiter.RecordFailure(ip)
+
+	// Wait for window to expire
+	time.Sleep(20 * time.Millisecond)
+
+	// Allow should clean up expired attempts
+	if !limiter.Allow(ip) {
+		t.Errorf("Expected Allow to return true after window expiry")
+	}
+
+	// Verify that the IP entry was deleted from memory to prevent leaks
+	limiter.mu.Lock()
+	_, exists := limiter.attempts[ip]
+	limiter.mu.Unlock()
+
+	if exists {
+		t.Errorf("Expected IP %q to be deleted from attempts map after all attempts expired", ip)
 	}
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
@@ -174,9 +176,13 @@ func (cm *ConfigManager) SaveStructuredConfig(raw RawRoot) error {
 		adminUser := "admin"
 		if u := os.Getenv("ADMIN_USER"); u != "" {
 			adminUser = u
+		} else if u := os.Getenv("ADMIN_USERNAME"); u != "" {
+			adminUser = u
 		}
 		adminPass := "adminpassword"
 		if p := os.Getenv("ADMIN_PASSWORD"); p != "" {
+			adminPass = p
+		} else if p := os.Getenv("ADMIN_PASS"); p != "" {
 			adminPass = p
 		}
 		raw.Users = append([]RawUser{{
@@ -714,7 +720,7 @@ func slugify(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	var b strings.Builder
 	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(r)
 		} else if r == ' ' || r == '-' || r == '_' {
 			b.WriteRune('-')
@@ -725,7 +731,9 @@ func slugify(s string) string {
 		res = strings.ReplaceAll(res, "--", "-")
 	}
 	if res == "" {
-		return fmt.Sprintf("btn-%d", time.Now().UnixNano()%100000)
+		h := fnv.New32a()
+		h.Write([]byte(s))
+		return fmt.Sprintf("btn-%08x", h.Sum32())
 	}
 	return res
 }

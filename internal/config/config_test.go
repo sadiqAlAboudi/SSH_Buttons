@@ -459,3 +459,27 @@ categories:
 	}
 }
 
+func TestSlugifyUnicodeAndHash(t *testing.T) {
+	// Standard ASCII
+	s1 := slugify("Restart Docker 01")
+	if s1 != "restart-docker-01" {
+		t.Errorf("Expected 'restart-docker-01', got %q", s1)
+	}
+
+	// Arabic text
+	s2 := slugify("إعادة تشغيل الخادم")
+	if s2 != "إعادة-تشغيل-الخادم" {
+		t.Errorf("Expected 'إعادة-تشغيل-الخادم', got %q", s2)
+	}
+
+	// Non-letter symbols fallback to deterministic hash
+	s3a := slugify("!@#$%^")
+	s3b := slugify("!@#$%^")
+	if s3a != s3b {
+		t.Errorf("Expected deterministic slug for identical symbols, got %q vs %q", s3a, s3b)
+	}
+	if !strings.HasPrefix(s3a, "btn-") {
+		t.Errorf("Expected 'btn-' prefix for symbol slug, got %q", s3a)
+	}
+}
+

@@ -53,7 +53,11 @@ func (l *LoginRateLimiter) Allow(ip string) bool {
 			recent = append(recent, t)
 		}
 	}
-	l.attempts[ip] = recent
+	if len(recent) == 0 {
+		delete(l.attempts, ip)
+	} else {
+		l.attempts[ip] = recent
+	}
 
 	return len(recent) < l.maxAttempts
 }
@@ -309,9 +313,19 @@ func (a *AuthService) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (a *AuthService) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
-	return a.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
-		cookie, _ := r.Cookie(SessionCookieName)
-		username, _ := a.ValidateSessionToken(cookie.Value)
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(SessionCookieName)
+		if err != nil || cookie.Value == "" {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+
+		username, ok := a.ValidateSessionToken(cookie.Value)
+		if !ok {
+			a.ClearSessionCookie(w)
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
 
 		if a.GetUserRole(username) != "admin" {
 			http.Error(w, "Forbidden: Administrator role required", http.StatusForbidden)
@@ -319,5 +333,5 @@ func (a *AuthService) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		next(w, r)
-	})
+	}
 }

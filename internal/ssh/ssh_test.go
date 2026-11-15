@@ -401,3 +401,63 @@ func TestSSHRunner_ExecChannelFailedDiagnosticHint(t *testing.T) {
 		t.Errorf("Expected diagnostic hint about pty: true, got %q", res.ErrorDetails)
 	}
 }
+
+func TestRebootCommandDetection(t *testing.T) {
+	positiveTests := []string{
+		"reboot",
+		"sudo reboot",
+		"sudo shutdown -h now",
+		"poweroff",
+		"halt",
+		"init 6",
+		"sudo init 0",
+		"systemctl reboot",
+		"sudo systemctl poweroff",
+		"/system reboot",
+		"reload",
+		"echo hello && reboot",
+		"sync; reboot\n",
+	}
+
+	for _, cmd := range positiveTests {
+		if !isRebootCommand(cmd) {
+			t.Errorf("Expected isRebootCommand(%q) to be true, got false", cmd)
+		}
+	}
+
+	negativeTests := []string{
+		"grep reboot /var/log/syslog",
+		"systemctl status reboot.target",
+		"cat /etc/reboot_schedule",
+		"echo 'reboot in progress'",
+		"nginx -t",
+		"systemctl status nginx",
+	}
+
+	for _, cmd := range negativeTests {
+		if isRebootCommand(cmd) {
+			t.Errorf("Expected isRebootCommand(%q) to be false, got true", cmd)
+		}
+	}
+}
+
+func TestInsecureHostKeyValidation_ExplicitFalse(t *testing.T) {
+	insecureFalse := false
+	host := config.HostConfig{
+		Name:                  "secure_host",
+		Host:                  "192.168.1.50",
+		Port:                  22,
+		User:                  "admin",
+		Password:              "pass",
+		InsecureIgnoreHostKey: &insecureFalse,
+		KnownHostsPath:        "/path/that/does/not/exist/known_hosts",
+	}
+
+	_, err := buildSSHClientConfig(host, 5*time.Second)
+	if err == nil {
+		t.Fatal("Expected error when known_hosts file does not exist and insecure is false, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to read known_hosts") {
+		t.Errorf("Expected known_hosts error, got %v", err)
+	}
+}

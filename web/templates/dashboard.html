@@ -120,8 +120,12 @@
       {{range .Buttons}}
       {{if .Confirm}}
       <!-- Button requiring Confirmation Modal -->
-      <button type="button" class="btn-act {{.Style}}"
-              onclick="promptConfirmation('{{.ID}}', '{{.Label}}', '{{.Host}}', '{{.Command}}', '{{.Style}}')">
+      <button type="button" class="btn-act {{.Style}} btn-confirm-trigger"
+              data-id="{{.ID}}"
+              data-label="{{.Label}}"
+              data-host="{{.Host}}"
+              data-cmd="{{.Command}}"
+              data-style="{{.Style}}">
         <div class="card-top">
           <span class="card-title">{{.Label}}</span>
           <span class="btn-indicator"></span>
@@ -214,6 +218,18 @@
   function closeConfirmation() {
     dialog.close();
   }
+
+  document.querySelectorAll('.btn-confirm-trigger').forEach(btn => {
+    btn.addEventListener('click', () => {
+      promptConfirmation(
+        btn.getAttribute('data-id'),
+        btn.getAttribute('data-label'),
+        btn.getAttribute('data-host'),
+        btn.getAttribute('data-cmd'),
+        btn.getAttribute('data-style')
+      );
+    });
+  });
 
   dialog.addEventListener('click', (e) => {
     const rect = dialog.getBoundingClientRect();
