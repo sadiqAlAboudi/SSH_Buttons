@@ -1,0 +1,16 @@
+# ==============================================================================
+# SSH Buttons - Configuration (config.yml)
+# Full documentation & configuration reference: visit /docs in the Web UI
+# ==============================================================================
+
+# 1. User Accounts & Roles (roles: "admin" | "operator")
+users:
+  - user: "admin"
+    pass: "adminpassword"
+    role: "admin"
+
+# 2. Target Remote Hosts (Add your hosts in the GUI Config Editor or define below)
+hosts: {}
+
+# 3. Categories & Action Buttons (Add your buttons in the GUI Config Editor or define below)
+categories: []

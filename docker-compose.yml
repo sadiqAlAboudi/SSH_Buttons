@@ -22,7 +22,7 @@ services:
       # - ADMIN_PASSWORD=adminpassword
     volumes:
       # Mount configuration file read-write so the WebUI Config Editor can persist changes
-      # If config.yml does not exist, the app automatically initializes it on first run
+      # config.yml is provided in the repository with a clean starter template
       - ./config.yml:/app/config.yml:rw
       # Mount SSH keys directory read-only
       - ./keys:/app/keys:ro

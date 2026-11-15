@@ -44,7 +44,7 @@ A lightweight, self-contained, Docker Compose-ready web dashboard in Go that act
    ```bash
    docker compose up -d
    ```
-   > **Note**: SSH Buttons automatically generates `config.yml` with a clean starter configuration on first run if it does not already exist.
+   > **Note**: A clean starter `config.yml` is included with the repository with the default `admin` account ready out of the box. You can customize hosts and buttons directly from the WebUI Config Editor or by editing `config.yml`.
 
 4. Open your browser or reverse proxy at **`http://localhost:8080`**.
    - Default Username: `admin`

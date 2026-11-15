@@ -119,6 +119,72 @@ func TestConfigAutoInitialization(t *testing.T) {
 	}
 }
 
+func TestConfigAutoInitialization_EmptyFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+
+	// Create a 0-byte file (simulating touch config.yml)
+	if err := os.WriteFile(configPath, []byte(""), 0644); err != nil {
+		t.Fatalf("Failed to create empty file: %v", err)
+	}
+
+	cm, err := NewConfigManager(configPath)
+	if err != nil {
+		t.Fatalf("Failed to auto-init config from empty file: %v", err)
+	}
+
+	// Check that file was populated
+	data, err := os.ReadFile(configPath)
+	if err != nil || len(data) == 0 {
+		t.Fatalf("Expected config.yml to be populated with starter configuration, got length %d", len(data))
+	}
+
+	cfg := cm.Get()
+	if _, ok := cfg.UsersByUsername["admin"]; !ok {
+		t.Errorf("Expected admin user loaded from empty-file populated config, got %+v", cfg.UsersByUsername)
+	}
+}
+
+func TestConfigAutoInitialization_Directory(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Simulating Docker bind mount creating a directory named config.yml
+	dirPath := filepath.Join(tmpDir, "config.yml")
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		t.Fatalf("Failed to create directory: %v", err)
+	}
+
+	cm, err := NewConfigManager(dirPath)
+	if err != nil {
+		t.Fatalf("Failed to auto-init config from directory: %v", err)
+	}
+
+	// Candidate file should be created inside the directory
+	expectedFile := filepath.Join(dirPath, "config.yml")
+	if _, err := os.Stat(expectedFile); os.IsNotExist(err) {
+		t.Fatalf("Expected %s to be created inside directory", expectedFile)
+	}
+
+	cfg := cm.Get()
+	if _, ok := cfg.UsersByUsername["admin"]; !ok {
+		t.Errorf("Expected admin user loaded, got %+v", cfg.UsersByUsername)
+	}
+
+	// Verify saving works through the resolved path
+	raw, err := cm.GetRawConfig()
+	if err != nil {
+		t.Fatalf("Failed to get raw config: %v", err)
+	}
+	raw.Server.Port = 9090
+	if err := cm.SaveStructuredConfig(raw); err != nil {
+		t.Fatalf("Failed to save structured config to directory-resolved path: %v", err)
+	}
+
+	reloadedCfg := cm.Get()
+	if reloadedCfg.Server.Port != 9090 {
+		t.Errorf("Expected port 9090 after save, got %d", reloadedCfg.Server.Port)
+	}
+}
+
 func TestConfigMultiUsers(t *testing.T) {
 	yamlContent := `
 users:

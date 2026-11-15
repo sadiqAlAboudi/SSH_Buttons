@@ -80,7 +80,11 @@ type ConfigManager struct {
 }
 
 func NewConfigManager(path string) (*ConfigManager, error) {
-	cm := &ConfigManager{path: path}
+	resolvedPath, err := resolveConfigPath(path)
+	if err != nil {
+		return nil, err
+	}
+	cm := &ConfigManager{path: resolvedPath}
 	if err := cm.Reload(); err != nil {
 		return nil, err
 	}
@@ -101,6 +105,12 @@ func (cm *ConfigManager) Get() *AppConfig {
 func (cm *ConfigManager) Reload() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
+
+	resolvedPath, err := resolveConfigPath(cm.path)
+	if err != nil {
+		return err
+	}
+	cm.path = resolvedPath
 
 	cfg, err := loadConfigFromFile(cm.path)
 	if err != nil {
@@ -354,23 +364,74 @@ categories: []
 `, adminUser, adminPass)
 }
 
-func loadConfigFromFile(path string) (*AppConfig, error) {
-	// Auto-initialize default configuration if target config does not exist
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+// resolveConfigPath checks if the path exists, is empty, or is a directory (e.g. from a Docker volume bind mount),
+// automatically initializing the starter configuration and returning the concrete file path.
+func resolveConfigPath(path string) (string, error) {
+	fi, err := os.Stat(path)
+	if os.IsNotExist(err) {
 		if dir := filepath.Dir(path); dir != "" && dir != "." {
 			_ = os.MkdirAll(dir, 0755)
 		}
 		defaultContent := GenerateDefaultConfigYAML()
+		if writeErr := os.WriteFile(path, []byte(defaultContent), 0644); writeErr != nil {
+			return "", fmt.Errorf("failed to initialize default config at %q: %w", path, writeErr)
+		}
+		log.Printf("[INFO] %s not found; automatically initialized with default starter configuration", path)
+		return path, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect config path %q: %w", path, err)
+	}
+
+	if fi.IsDir() {
+		// Target path is a directory (e.g., Docker created a directory for a missing bind mount)
+		candidate := filepath.Join(path, "config.yml")
+		candFi, candErr := os.Stat(candidate)
+		if os.IsNotExist(candErr) {
+			defaultContent := GenerateDefaultConfigYAML()
+			if writeErr := os.WriteFile(candidate, []byte(defaultContent), 0644); writeErr != nil {
+				return "", fmt.Errorf("config path %q is a directory, and failed to create %q inside it: %w. "+
+					"This happens when Docker mounts a file before it exists on the host. "+
+					"Please stop the container ('docker compose down'), delete the %q directory on your host, "+
+					"create %q as a file, and restart",
+					path, candidate, writeErr, filepath.Base(path), filepath.Base(path))
+			}
+			log.Printf("[INFO] Config path %q is a directory; automatically initialized starter config at %q", path, candidate)
+			return candidate, nil
+		}
+		if candErr != nil {
+			return "", fmt.Errorf("failed to inspect candidate config file %q: %w", candidate, candErr)
+		}
+		if candFi.IsDir() {
+			return "", fmt.Errorf("config path %q and inner candidate %q are both directories", path, candidate)
+		}
+		log.Printf("[INFO] Config path %q is a directory; using config file at %q", path, candidate)
+		return candidate, nil
+	}
+
+	// Target is a file: if empty (0 bytes), populate it with default starter config
+	if fi.Size() == 0 {
+		defaultContent := GenerateDefaultConfigYAML()
 		if writeErr := os.WriteFile(path, []byte(defaultContent), 0644); writeErr == nil {
-			log.Printf("[INFO] %s not found; automatically initialized with default user and configuration", path)
+			log.Printf("[INFO] Config file %q is empty; automatically populated with default starter configuration", path)
 		} else {
-			log.Printf("[WARN] Failed to write default configuration to %s: %v", path, writeErr)
+			log.Printf("[WARN] Failed to populate empty config file %q: %v", path, writeErr)
 		}
 	}
 
+	return path, nil
+}
+
+func loadConfigFromFile(path string) (*AppConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
+	}
+
+	if len(strings.TrimSpace(string(data))) == 0 {
+		defaultContent := GenerateDefaultConfigYAML()
+		_ = os.WriteFile(path, []byte(defaultContent), 0644)
+		data = []byte(defaultContent)
 	}
 
 	var raw RawRoot
